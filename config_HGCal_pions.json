@@ -1,0 +1,16 @@
+
+{
+    'EVAL':'datasets/pion_files_test2.txt',
+    'HGCAL' : True,
+    'BIN_FILE': 'HGCalShowers/geoms/HGCal_geo_2024_large.pkl',
+    'PART_TYPE' : 'pion',
+    'DATASET_NUM' : 120,
+    'SHAPE_ORIG': [-1,47,22268],
+    'SHAPE_PAD':[-1,1,47,12,48],
+    'SHAPE_FINAL':[-1,1,47,12,48],
+    'MAX_CELLS': 22268,
+    'EMAX': [100, 2.01, 1.572],
+    'EMIN': [50, 1.99, 1.57],
+    'ECUT':-1,
+}
+
