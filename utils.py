@@ -30,6 +30,8 @@ def get_files(field, folder=""):
         if(not os.path.exists(field)):
             print("File list %s not found" % field)
             return []
+        if(".h5" in field): #single file
+            return [field]
         with open(field, "r") as f:
             f_list = [os.path.join(folder, line.strip()) for line in f]
             return f_list

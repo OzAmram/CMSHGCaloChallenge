@@ -210,7 +210,7 @@ class DNN(torch.nn.Module):
 
 def get_feat_names(nLayers):
     feat_names = ['Incident E', 'E Ratio']
-    for i in range(nLayers): feat_names.append("Energy Layer %i" % i)
+    for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
     for i in range(nLayers): feat_names.append("Y Center Layer %i" % i)
@@ -386,7 +386,7 @@ def compute_metrics(flags):
     sep_power_result_str = ""
     sep_power_sum = 0.0
     print(feats_gen.shape)
-    for i in range(nLayers):
+    for i in range(len(feat_names)):
         if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "") + ".png"
         sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
 
