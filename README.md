@@ -38,3 +38,15 @@ An example usage would be
 `python hgcal_metrics.py -c config_HGCal_pions.json -g datasets/HGCal_central_2024_pions_eval_test.txt -p plots/eval_test/ -d  /uscms_data/d3/oamram/HGCal/HGCal_central_2024_pions/`
 
 
+Note that computing all of the features for evaluation takes quite some time
+for the pion datasets. To avoid this significant overhead, the script saves
+these computed features once for each input file with the same name extended
+with .feat.npz. Subsequent runs will then use these pre-computed features if such
+a file exists. To force a recreation of these files you can use the
+`--reprocess` flag
+
+The evaluation can optionally be done without the inclusion of the sparsity
+feature with the `--no_sparse` flag.
+
+If one only wants to run some partial metrics the `--mode` flag can be used
+with options `hist, cls, fpd, all` (all is the default).
