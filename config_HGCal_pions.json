@@ -1,16 +1,22 @@
 
 {
-    'EVAL':'datasets/pion_files_test2.txt',
+    'FILES':'CMSHGCaloChallenge/datasets/pion_files_train_local.txt',
+    'VAL_FILES':'CMSHGCaloChallenge/datasets/pion_files_val_local.txt',
+    'EVAL':'datasets/pion_files_test_local.txt',
     'HGCAL' : True,
-    'BIN_FILE': 'HGCalShowers/geoms/HGCal_geo_2024_large.pkl',
+    'BIN_FILE': '/global/u1/o/ozamram/CaloDiffusion/HGCalShowers/geoms/HGCal_geo_2024_large.pkl',
     'PART_TYPE' : 'pion',
+    'AVG_SHOWER_LOC' : 'dataset_1_photons_avg_showers.h5',
     'DATASET_NUM' : 120,
+    'HOLDOUT' : 0,
     'SHAPE_ORIG': [-1,47,22268],
     'SHAPE_PAD':[-1,1,47,12,48],
     'SHAPE_FINAL':[-1,1,47,12,48],
     'MAX_CELLS': 22268,
-    'EMAX': [100, 2.01, 1.572],
-    'EMIN': [50, 1.99, 1.57],
-    'ECUT':-1,
+    'EMAX': [1000, 2.01, 1.572],
+    'EMIN': [1, 1.99, 1.57],
+    'ECUT':0.001,
+    'logE':False,
+    'MAXDEP':1.0,
 }
 

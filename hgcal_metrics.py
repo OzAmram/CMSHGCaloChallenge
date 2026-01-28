@@ -1,4 +1,5 @@
-import os, time, sys, copy
+import os
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -18,29 +19,7 @@ from sklearn.isotonic import IsotonicRegression
 
 
 import utils
-
-def make_hist(reference, generated ,xlabel='',ylabel='Arbitrary units',logy=False,binning=None,label_loc='best', normalize = True, 
-        fname = "", leg_font = 24):
-    
-    ax0 = plt.figure(figsize=(10,10))
-
-    if binning is None:
-        binning = np.linspace( np.quantile(reference,0.0),np.quantile(reference,1),50)
-    xaxis = [(binning[i] + binning[i+1])/2.0 for i in range(len(binning)-1)]
-    
-    dist_ref,_,_=plt.hist(reference,bins=binning,label='Geant',color='silver',density=normalize,histtype="stepfilled", lw =4 )
-    dist_gen,_,_=plt.hist(generated,bins=binning,label='CaloDiffusion',color='blue',density=normalize,histtype="step", lw =4 )
-    plt.xlabel(xlabel)
-    plt.subplots_adjust(left = 0.15, right = 0.9, top = 0.94, bottom = 0.12, wspace = 0, hspace=0)
-    
-    sep_power = utils._separation_power(dist_ref, dist_gen, binning)
-
-    if(len(fname) > 0): plt.savefig(fname)
-        
-    return sep_power
-
-
-
+from plotting.plotting_utils import make_hist
 
 def train_and_evaluate_cls(model, data_train, data_test, optim, arg):
     """ train the model and evaluate along the way"""
@@ -280,10 +259,10 @@ def compute_metrics(flags):
     dataset_num = dataset_config.get('DATASET_NUM', 2)
     hgcal = dataset_config.get('HGCAL', False)
     max_cells = dataset_config.get('MAX_CELLS', None)
-    EMin = dataset_config.get('EMin', -1)
 
     if(torch.cuda.is_available()): device = torch.device('cuda')
     else: device = torch.device('cpu')
+    flags.device = device
 
 
     geom = utils.load_geom(geom_file)
@@ -291,21 +270,19 @@ def compute_metrics(flags):
 
     shape_plot = dataset_config['SHAPE_ORIG']
 
-    #if(pre_embed): 
-        #shape_plot = list(dataset_config['SHAPE_ORIG'])
-        #shape_plot.insert(1,1) # padding dim
-        #shape_embed = dataset_config['SHAPE_FINAL']
-
     print("Data shape", shape_plot)
 
     if(not os.path.exists(flags.plot_folder)): os.system("mkdir -p %s" % flags.plot_folder)
 
 
     geom_conv = None
-    def LoadSamples(fname, EMin = -1.0, nevts = -1):
+
+
+
+    def LoadFile(fname, EMin = -1.0, nevts = -1):
         print("Load %s" % fname)
         end = None if nevts < 0 else nevts
-        scale_fac = 100. if hgcal else (1/1000.)
+        scale_fac = 1000.
         with h5.File(fname,"r") as h5f:
             if(hgcal): 
                 generated = h5f['showers'][:end,:,:dataset_config['MAX_CELLS']] * scale_fac
@@ -318,8 +295,8 @@ def compute_metrics(flags):
         generated = np.reshape(generated,shape_plot)
         if(EMin > 0.):
             mask = generated < EMin
-            print("Applying ECut " + str(EMin))
-            print('before', np.mean(generated))
+            #print("Applying ECut " + str(EMin))
+            #print('before', np.mean(generated))
 
             #Preserve layer energies after applying threshold
             generated[generated < 0] = 0 
@@ -328,11 +305,24 @@ def compute_metrics(flags):
             ELayer = np.sum(generated, axis = -1, keepdims=True)
             eps = 1e-10
             rescale = (ELayer + eps)/(ELayer - lostE +eps)
+            rescale[ELayer < EMin] = 0.
             generated[mask] = 0.
             generated *= rescale
-            print('after', np.mean(generated))
+            #print('after', np.mean(generated))
 
         return generated,energies
+
+    def LoadSample(fname, EMin = -1.0, nevts = -1, reprocess=False):
+        feat_file = fname + ".feat.npz"
+        if(os.path.exists(feat_file) and not reprocess):
+            print("Load %s" % feat_file)
+            feats = np.load(feat_file)['feats']
+        else:
+            showers, energies = LoadFile(fname, EMin, flags.nevts)
+            feats = compute_feats(showers, energies, geom)
+            np.savez(feat_file, feats=feats)
+
+        return feats
 
 
     geant_energies = None
@@ -348,23 +338,23 @@ def compute_metrics(flags):
 
         feats_gen = feats_geant = None
         for f_sample in f_sample_list: 
-            showers, energies = LoadSamples( f_sample, EMin, flags.nevts)
-            feats = compute_feats(showers, energies, geom)
+            try:
+                feats = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess)
+                if(feats_gen is None): feats_gen = feats
+                else: 
+                    feats_gen = np.concatenate((feats_gen, feats), axis=0)
 
-            if(feats_gen is None): feats_gen = feats
-            else: 
-                feats_gen = np.concatenate((feats_gen, feats), axis=0)
-
-            total_evts = feats_gen.shape[0]
-            if(flags.nevts > 0 and total_evts >= flags.nevts): break
+                total_evts = feats_gen.shape[0]
+                if(flags.nevts > 0 and total_evts >= flags.nevts): break
+            except:
+                print("Bad file, skipping")
 
         print("Loaded %i generated showers" % total_evts)
 
 
     f_geant_list = utils.get_files(dataset_config['EVAL'], folder=flags.data_folder)
     for f_sample in f_geant_list:
-        showers, energies = LoadSamples( f_sample, EMin, flags.nevts)
-        feats = compute_feats(showers, energies, geom)
+        feats = LoadSample( f_sample, flags.EMin, flags.nevts)
 
         if(feats_geant is None): feats_geant = feats
         else: feats_geant = np.concatenate((feats_geant, feats), axis=0)
@@ -372,35 +362,115 @@ def compute_metrics(flags):
         total_evts = feats_geant.shape[0]
         if(flags.nevts > 0 and total_evts >= flags.nevts): break
 
-    #Prepare data
-    #diffu_showers = np.squeeze(diffu_showers)
-    #geant_showers = np.squeeze(geant_showers)
-    #geant_energies = np.array(geant_energies).reshape(geant_showers.shape[0], 1)
-
 
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
 
+    if(flags.no_sparse):
+        #don't include sparsity feature
+        feats_no_sparse = [idx for idx,feat_name in enumerate(feat_names) if 'Sparsity' not in feat_name] 
+        feats_geant = feats_geant[:, feats_no_sparse]
+        feats_gen = feats_gen[:, feats_no_sparse]
+        feat_names = [feat_names[idx] for idx in feats_no_sparse]
+
+
+
+    do_hists = do_classifier = do_fpd = False
+
+    if(flags.mode == "all"):
+        do_hists = do_classifier = do_fpd = True
+    elif(flags.mode == "hist"):
+        do_hist = True
+    elif(flags.mode == "classifier" or flags.mode == "cls"):
+        do_classifier = True
+    elif(flags.mode == "fpd" or flags.mode == "kpd"):
+        do_fpd = True
+
+
+
     #Separation power
-    fname = ""
-    sep_power_result_str = ""
-    sep_power_sum = 0.0
-    print(feats_gen.shape)
-    for i in range(len(feat_names)):
-        if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "") + ".png"
-        sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
+    if(do_hists):
+        fname = ""
+        sep_power_result_str = ""
+        sep_power_sum = 0.0
+        print(feats_gen.shape)
+        for i in range(len(feat_names)):
+            if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "") + ".png"
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
 
-        sep_power_sum += sep_power
-        sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
+            sep_power_sum += sep_power
+            sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
 
 
-    sep_power_result_str += "\n TOTAL : %.2f" % sep_power_sum
-    with open(os.path.join(flags.plot_folder, 'sep_power.txt'), 'w') as f:
-        f.write(sep_power_result_str)
+        sep_power_result_str += "\n TOTAL : %.2f" % sep_power_sum
+        with open(os.path.join(flags.plot_folder, 'sep_power.txt'), 'w') as f:
+            f.write(sep_power_result_str)
 
     #FPD KPD
 
-    if(flags.fpd):
+
+    if(do_classifier):
+        labels_diffu = np.ones((feats_gen.shape[0], 1), dtype=np.float32)
+        labels_geant = np.zeros((feats_geant.shape[0], 1), dtype=np.float32)
+
+        labels_all = np.concatenate((labels_diffu, labels_geant), axis = 0)
+        feats_all = np.concatenate((feats_gen, feats_geant), axis = 0)
+
+        scaler = StandardScaler()
+        feats_all = scaler.fit_transform(feats_all)
+        print(feats_all.shape, labels_all.shape)
+        inputs_all = np.concatenate((feats_all, labels_all), axis = 1)
+
+        ttv_fracs = np.array([0.7, 0.1, 0.2])
+        train_data, test_data, val_data = ttv_split(inputs_all, ttv_fracs)
+
+
+        input_dim = feats_all.shape[1]
+        cls_num_layer = 2
+        cls_num_hidden = 2024
+        dropout = 0.2
+        cls_lr = 1e-4
+        classifier = DNN(input_dim = input_dim, num_layer= cls_num_layer, num_hidden = cls_num_hidden, dropout_probability = dropout)
+        classifier.to(device)
+        print(classifier)
+        total_parameters = sum(p.numel() for p in classifier.parameters() if p.requires_grad)
+
+        print("Classifier has {} parameters".format( int(total_parameters)))
+
+        optimizer = torch.optim.Adam(classifier.parameters(), lr= cls_lr)
+
+
+        if flags.save_mem:
+            train_data = torchdata.TensorDataset(torch.tensor(train_data))
+            test_data = torchdata.TensorDataset(torch.tensor(test_data))
+            val_data = torchdata.TensorDataset(torch.tensor(val_data))
+        else:
+            train_data = torchdata.TensorDataset(torch.tensor(train_data).to(device))
+            test_data = torchdata.TensorDataset(torch.tensor(test_data).to(device))
+            val_data = torchdata.TensorDataset(torch.tensor(val_data).to(device))
+
+        train_dataloader = torchdata.DataLoader(train_data, batch_size=flags.cls_batch_size, shuffle=True)
+        test_dataloader = torchdata.DataLoader(test_data, batch_size=flags.cls_batch_size, shuffle=False)
+        val_dataloader = torchdata.DataLoader(val_data, batch_size=flags.cls_batch_size, shuffle=False)
+
+        for i in range(flags.cls_n_iters):
+            classifier = train_and_evaluate_cls(classifier, train_dataloader, val_dataloader, optimizer, flags)
+            #classifier = load_classifier(classifier, flags)
+
+            with torch.no_grad():
+                print("Now looking at independent dataset:")
+                eval_acc, eval_auc, eval_JSD = evaluate_cls(classifier, test_dataloader, flags,
+                                                            final_eval=True,
+                                                            calibration_data=val_dataloader)
+            print("Final result of classifier test (AUC / JSD):")
+            print("{:.4f} / {:.4f}".format(eval_auc, eval_JSD))
+            with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'a') as f:
+                f.write('Final result of classifier test (AUC / JSD):\n'+\
+                        '{:.4f} / {:.4f}\n\n'.format(eval_auc, eval_JSD))
+
+    if(do_fpd):
         min_samples = min(feats_geant.shape[0], 20000)
         fpd_val, fpd_err = jetnet.evaluation.fpd(feats_geant, feats_gen, min_samples = min_samples)
         kpd_val, kpd_err = jetnet.evaluation.kpd(feats_geant, feats_gen)
@@ -412,65 +482,6 @@ def compute_metrics(flags):
         print(fpd_result_str)
         with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'a') as f:
             f.write(fpd_result_str)
-
-    labels_diffu = np.ones((feats_gen.shape[0], 1), dtype=np.float32)
-    labels_geant = np.zeros((feats_geant.shape[0], 1), dtype=np.float32)
-
-    labels_all = np.concatenate((labels_diffu, labels_geant), axis = 0)
-    feats_all = np.concatenate((feats_gen, feats_geant), axis = 0)
-
-    scaler = StandardScaler()
-    feats_all = scaler.fit_transform(feats_all)
-    print(feats_all.shape, labels_all.shape)
-    inputs_all = np.concatenate((feats_all, labels_all), axis = 1)
-
-    ttv_fracs = np.array([0.7, 0.1, 0.2])
-    train_data, test_data, val_data = ttv_split(inputs_all, ttv_fracs)
-
-
-    input_dim = feats_all.shape[1]
-    cls_num_layer = 2
-    cls_num_hidden = 2024
-    dropout = 0.2
-    cls_lr = 1e-4
-    classifier = DNN(input_dim = input_dim, num_layer= cls_num_layer, num_hidden = cls_num_hidden, dropout_probability = dropout)
-    classifier.to(device)
-    print(classifier)
-    total_parameters = sum(p.numel() for p in classifier.parameters() if p.requires_grad)
-
-    print("Classifier has {} parameters".format( int(total_parameters)))
-
-    optimizer = torch.optim.Adam(classifier.parameters(), lr= cls_lr)
-
-
-    if flags.save_mem:
-        train_data = torchdata.TensorDataset(torch.tensor(train_data))
-        test_data = torchdata.TensorDataset(torch.tensor(test_data))
-        val_data = torchdata.TensorDataset(torch.tensor(val_data))
-    else:
-        train_data = torchdata.TensorDataset(torch.tensor(train_data).to(device))
-        test_data = torchdata.TensorDataset(torch.tensor(test_data).to(device))
-        val_data = torchdata.TensorDataset(torch.tensor(val_data).to(device))
-
-    train_dataloader = torchdata.DataLoader(train_data, batch_size=flags.cls_batch_size, shuffle=True)
-    test_dataloader = torchdata.DataLoader(test_data, batch_size=flags.cls_batch_size, shuffle=False)
-    val_dataloader = torchdata.DataLoader(val_data, batch_size=flags.cls_batch_size, shuffle=False)
-
-    for i in range(flags.cls_n_iters):
-        classifier = train_and_evaluate_cls(classifier, train_dataloader, val_dataloader, optimizer, flags)
-        #classifier = load_classifier(classifier, flags)
-
-        with torch.no_grad():
-            print("Now looking at independent dataset:")
-            eval_acc, eval_auc, eval_JSD = evaluate_cls(classifier, test_dataloader, flags,
-                                                        final_eval=True,
-                                                        calibration_data=val_dataloader)
-        print("Final result of classifier test (AUC / JSD):")
-        print("{:.4f} / {:.4f}".format(eval_auc, eval_JSD))
-        with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'a') as f:
-            f.write('Final result of classifier test (AUC / JSD):\n'+\
-                    '{:.4f} / {:.4f}\n\n'.format(eval_auc, eval_JSD))
-
 
 
 if(__name__ == "__main__"):
@@ -492,7 +503,9 @@ if(__name__ == "__main__"):
     parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory')
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
-    parser.add_argument('--fpd', action='store_true', default=False,help='Compute FPD/KPD')
+    parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
+    parser.add_argument('--no_sparse', action='store_true', default=False,help='Dont include sparsity feature')
+    parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
 
     flags = parser.parse_args()
     compute_metrics(flags)
