@@ -1,4 +1,5 @@
-import os, time, sys, copy
+import os
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -18,29 +19,7 @@ from sklearn.isotonic import IsotonicRegression
 
 
 import utils
-
-def make_hist(reference, generated ,xlabel='',ylabel='Arbitrary units',logy=False,binning=None,label_loc='best', normalize = True, 
-        fname = "", leg_font = 24):
-    
-    ax0 = plt.figure(figsize=(10,10))
-
-    if binning is None:
-        binning = np.linspace( np.quantile(reference,0.0),np.quantile(reference,1),50)
-    xaxis = [(binning[i] + binning[i+1])/2.0 for i in range(len(binning)-1)]
-    
-    dist_ref,_,_=plt.hist(reference,bins=binning,label='Geant',color='silver',density=normalize,histtype="stepfilled", lw =4 )
-    dist_gen,_,_=plt.hist(generated,bins=binning,label='CaloDiffusion',color='blue',density=normalize,histtype="step", lw =4 )
-    plt.xlabel(xlabel)
-    plt.subplots_adjust(left = 0.15, right = 0.9, top = 0.94, bottom = 0.12, wspace = 0, hspace=0)
-    
-    sep_power = utils._separation_power(dist_ref, dist_gen, binning)
-
-    if(len(fname) > 0): plt.savefig(fname)
-        
-    return sep_power
-
-
-
+from plotting.plotting_utils import make_hist
 
 def train_and_evaluate_cls(model, data_train, data_test, optim, arg):
     """ train the model and evaluate along the way"""
@@ -417,7 +396,9 @@ def compute_metrics(flags):
         print(feats_gen.shape)
         for i in range(len(feat_names)):
             if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "") + ".png"
-            sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
 
             sep_power_sum += sep_power
             sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
