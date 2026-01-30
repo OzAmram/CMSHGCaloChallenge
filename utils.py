@@ -1,22 +1,8 @@
-import os, time, sys, copy, pickle
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
-from matplotlib import gridspec
-import argparse
-import h5py as h5
-import torch
-import torch.utils.data as torchdata
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-import jetnet
-import h5py
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import roc_auc_score
-from sklearn.calibration import calibration_curve
-from sklearn.isotonic import IsotonicRegression
+import os
+import pickle
 
-from HGCalShowers.HGCalGeo import HGCalGeo
+import numpy as np
+
 
 def get_files(field, folder=""):
     print(field, folder)
