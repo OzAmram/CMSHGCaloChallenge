@@ -136,8 +136,11 @@ def make_hist(
     ax[1].set_ylim(0.5, 1.5)
     ax[0].set_xlim(binning[0], binning[-1])
 
+
     if logy:
         ax[0].set_yscale("log")
+    else:
+        ax[0].set_ylim(0., None)
     ax[1].axhline(0.7, c="k", ls="--", lw=0.5)
     ax[1].axhline(1.3, c="k", ls="--", lw=0.5)
     ax[0].set_ylabel(ylabel, fontsize=leg_font)
@@ -152,7 +155,7 @@ def make_hist(
     )
     fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
 
-    sep_power = utils._separation_power(dist_ref, dist_gen, binning)
+    sep_power = utils._separation_power(dist_ref_normalized, dist_gen_normalized, binning)
 
     # should probably make them pdfs at some point
     # plt.savefig(fname, dpi=300, format="pdf")
