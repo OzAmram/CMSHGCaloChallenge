@@ -13,7 +13,6 @@ plt.rc("font", **{"size": 16})
 def dup(a):
     return np.append(a, a[-1])
 
-
 def make_hist(
     reference,
     generated,

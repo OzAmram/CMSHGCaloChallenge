@@ -25,7 +25,7 @@ where:
 * `PLOT_DIR/` is a directory to put the evaluation plots as well as a text file with the numeric metrics.
 * `DATA_DIR/` is a directory where the Geant showers are stored.
 * `MODE` is the evaluation to be performed. One of `hist`, `cls`, `fpd`, or `all`. Default is `all`
-* `EMin` is the minimum voxel energy. Default is 0.001.
+* `EMin` is the minimum voxel energy. Default is 0.00001 (10 keV)
 
 An example usage would be:
 ```

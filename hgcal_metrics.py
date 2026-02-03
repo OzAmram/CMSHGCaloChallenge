@@ -21,26 +21,6 @@ from sklearn.isotonic import IsotonicRegression
 import utils
 from plotting.plotting_utils import make_hist
 
-def simple_hist(reference, generated ,xlabel='',ylabel='Arbitrary units',logy=False,binning=None,label_loc='best', normalize = True,
-        fname = "", leg_font = 24):
-
-    ax0 = plt.figure(figsize=(10,10))
-
-    if binning is None:
-        binning = np.linspace( np.quantile(reference,0.0),np.quantile(reference,1),50)
-    xaxis = [(binning[i] + binning[i+1])/2.0 for i in range(len(binning)-1)]
-
-    dist_ref,_,_=plt.hist(reference,bins=binning,label='Geant',color='silver',density=normalize,histtype="stepfilled", lw =4 )
-    dist_gen,_,_=plt.hist(generated,bins=binning,label='CaloDiffusion',color='blue',density=normalize,histtype="step", lw =4 )
-    plt.xlabel(xlabel)
-    plt.subplots_adjust(left = 0.15, right = 0.9, top = 0.94, bottom = 0.12, wspace = 0, hspace=0)
-
-    sep_power = utils._separation_power(dist_ref, dist_gen, binning)
-
-    if(len(fname) > 0): plt.savefig(fname)
-
-    return sep_power
-
 def train_and_evaluate_cls(model, data_train, data_test, optim, arg):
     """ train the model and evaluate along the way"""
     best_eval_acc = float('-inf')
@@ -412,9 +392,6 @@ def compute_metrics(flags):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
-                sep_power_old = simple_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  "")
-
-                print(feat_names[i], sep_power, sep_power_old)
 
             sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
 
@@ -439,18 +416,25 @@ def compute_metrics(flags):
         with open(os.path.join(flags.plot_folder, 'sep_power.txt'), 'w') as f:
             f.write(sep_power_result_str)
 
+        print("Saved all sep. power metrics in %s" %  os.path.join(flags.plot_folder, "sep_power.txt"))
+
         #group by categories for metrics file
         sep_power_metrics_str = ""
         for key in sep_power_sums.keys():
-            sep_power_metrics_str += "Total separation power of %s features: %.3e \n" % (key, sep_power_sums[key])
+            norm = nLayers
+            if("Energy" in key): norm = nLayers+1 # Extra E ratio feature
+            if("Center" in key or "Width" in key): norm = 2.0 * nLayers+1 # X and Y features
+            if("all" in key): norm = len(feat_names) - 1
+            avg_sep = sep_power_sums[key] / norm
+            print(key, norm)
+            sep_power_metrics_str += "Avg separation power of %s features: %.3e \n" % (key, avg_sep)
 
-        print("Saved all sep. powers metrics in %s" %  os.path.join(flags.plot_folder, "sep_power.txt"))
+        print(sep_power_metrics_str)
 
         with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'w') as f:
             f.write(sep_power_metrics_str)
 
 
-    #FPD KPD
 
 
     if(do_classifier):
@@ -506,7 +490,7 @@ def compute_metrics(flags):
                 eval_acc, eval_auc = evaluate_cls(classifier, test_dataloader, flags,
                                                             final_eval=True,
                                                             calibration_data=val_dataloader)
-            cls_string = "Final result of classifier test (AUC): %.4f " % eval_auc
+            cls_string = "Result of classifier test (AUC): %.4f \n" % eval_auc
             print(cls_string)
             with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'a') as f:
                 f.write(cls_string)
@@ -537,7 +521,7 @@ if(__name__ == "__main__"):
     parser.add_argument('--generated', '-g', default='', help='Generated showers')
     parser.add_argument('--config', '-c', default='config_dataset2.json', help='Training parameters')
     parser.add_argument('-n', '--nevts', type=int,default=-1, help='Number of events to load')
-    parser.add_argument('--EMin', type = float, default=0.001, help='Voxel min energy')
+    parser.add_argument('--EMin', type = float, default=0.00001, help='Voxel min energy')
     parser.add_argument('--EMin_no_rescale', dest='EMin_rescale', action='store_false', help='When applying min energy cut, do not rescale other voxels to preserve layer energy (default is to rescale)')
 
     parser.add_argument('--plot', default=False, action='store_true', help='Save 1D feature plots')
