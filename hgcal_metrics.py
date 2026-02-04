@@ -422,7 +422,7 @@ def compute_metrics(flags):
         for key in sep_power_sums.keys():
             norm = nLayers
             if("Energy" in key): norm = nLayers+1 # Extra E ratio feature
-            if("Center" in key or "Width" in key): norm = 2.0 * nLayers+1 # X and Y features
+            if("Center" in key or "Width" in key): norm = 2.0 * nLayers # X and Y features
             if("all" in key): norm = len(feat_names) - 1
             avg_sep = sep_power_sums[key] / norm
             print(key, norm)
