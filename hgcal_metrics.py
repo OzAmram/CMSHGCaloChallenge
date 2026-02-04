@@ -189,8 +189,8 @@ def get_feat_names(nLayers):
 
 def compute_feats(showers, incident_E, geom):
 
-    eps = 1e-8
 
+    eps = 1e-8
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_ratio = E_total / incident_E
     E_per_layer = np.log10( np.sum(showers, axis=(2)) + eps)
@@ -215,7 +215,6 @@ def compute_feats(showers, incident_E, geom):
     #E_phi_center, E_phi_width = utils.ang_center_spread(phi_vals, showers, axis=(2))
 
 
-    eps = 1e-6
     layer_voxels = np.reshape(showers,(showers.shape[0],showers.shape[1],-1))
     layer_sparsity = np.sum(layer_voxels > eps, axis = -1) / layer_voxels.shape[2]
 
