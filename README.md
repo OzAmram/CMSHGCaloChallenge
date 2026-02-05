@@ -17,7 +17,7 @@ Pion datasets:
 
 Evaluation metrics are computed with the `hgcal_metrics.py` script; to run it:
 ```
-python hgcal_metrics.py -c CONFIG.json -g GENERATED_FILES.txt -p PLOT_DIR/ -d DATA_DIR/ --mode MODE --EMin EMIN
+python hgcal_metrics.py -c CONFIG.json -g GENERATED_FILES.txt -p PLOT_DIR/ -d DATA_DIR/ --mode MODE --EMin EMIN --name MODEL_NAME [--plot]
 ```
 where:
 * `CONFIG.json` is a configuration file with details of the dataset (either `config_HGCal_pions.json` or `config_HGCAL_photons.json`)
@@ -25,11 +25,14 @@ where:
 * `PLOT_DIR/` is a directory to put the evaluation plots as well as a text file with the numeric metrics.
 * `DATA_DIR/` is a directory where the Geant showers are stored.
 * `MODE` is the evaluation to be performed. One of `hist`, `cls`, `fpd`, or `all`. Default is `all`
+* `--plot` determines whether histogram plots of each feature will be saved
 * `EMin` is the minimum voxel energy. Default is 0.00001 (10 keV)
+* `MODEL_NAME` is a string which will be used to label your model on the
+  histogram plots
 
 An example usage would be:
 ```
-python hgcal_metrics.py -c config_HGCal_pions.json -g datasets/HGCal_central_2024_pions_eval_test.txt -p plots/eval_test/ -d  /uscms_data/d3/oamram/HGCal/HGCal_central_2024_pions/
+python hgcal_metrics.py -c config_HGCal_pions.json -g datasets/HGCal_central_2024_pions_eval_test.txt -p plots/eval_test/ -d  /uscms_data/d3/oamram/HGCal/HGCal_central_2024_pions/ --mode all --plot --name MyModel
 ```
 
 When using a non-zero EMin value, some voxels will get their energy set to zero for the evaluation. 

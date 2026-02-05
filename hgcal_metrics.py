@@ -387,10 +387,10 @@ def compute_metrics(flags):
                 "all": 0., 
                 }
         for i,feat_name in enumerate(feat_names):
-            if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "") + ".png"
+            if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "")
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
+                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], model_name=flags.name, fname=fname)
 
             sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
 
@@ -425,7 +425,6 @@ def compute_metrics(flags):
             if("Center" in key or "Width" in key): norm = 2.0 * nLayers # X and Y features
             if("all" in key): norm = len(feat_names) - 1
             avg_sep = sep_power_sums[key] / norm
-            print(key, norm)
             sep_power_metrics_str += "Avg separation power of %s features: %.3e \n" % (key, avg_sep)
 
         print(sep_power_metrics_str)
@@ -522,6 +521,7 @@ if(__name__ == "__main__"):
     parser.add_argument('-n', '--nevts', type=int,default=-1, help='Number of events to load')
     parser.add_argument('--EMin', type = float, default=0.00001, help='Voxel min energy')
     parser.add_argument('--EMin_no_rescale', dest='EMin_rescale', action='store_false', help='When applying min energy cut, do not rescale other voxels to preserve layer energy (default is to rescale)')
+    parser.add_argument('--name', default='Model', help='Model name (for plot labels)')
 
     parser.add_argument('--plot', default=False, action='store_true', help='Save 1D feature plots')
 

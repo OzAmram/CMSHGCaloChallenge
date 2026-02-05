@@ -22,6 +22,7 @@ def make_hist(
     binning=None,
     label_loc="best",
     normalize=True,
+    model_name="Model",
     fname="",
     leg_font=16,
 ):
@@ -93,7 +94,7 @@ def make_hist(
     ax[0].step(
         binning,
         dup(dist_gen_normalized),
-        label="Model",
+        label=model_name,
         where="post",
         linewidth=1.0,
         alpha=1.0,
@@ -145,7 +146,7 @@ def make_hist(
     ax[1].axhline(1.3, c="k", ls="--", lw=0.5)
     ax[0].set_ylabel(ylabel, fontsize=leg_font)
     ax[1].set_xlabel(xlabel, fontsize=leg_font)
-    ax[1].set_ylabel(r"$\frac{\text{Model}}{\text{Geant4}}$", fontsize=leg_font)
+    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
     ax[0].legend(
         loc=label_loc,
         frameon=False,
@@ -158,9 +159,18 @@ def make_hist(
         dist_ref_normalized, dist_gen_normalized, binning
     )
 
-    # should probably make them pdfs at some point
-    # plt.savefig(fname, dpi=300, format="pdf")
     if len(fname) > 0:
-        fig.savefig(fname)
+        fig.savefig(fname + ".png")
+        fig.savefig(fname + ".pdf", dpi=300, format="pdf")
+
+        #save hists for later
+        np.savez(
+             fname+".npz", 
+             dist_ref=dist_ref_normalized, 
+             dist_ref_err=dist_ref_error, 
+             dist_gen=dist_gen_normalized, 
+             dist_gen_err=dist_gen_error, 
+             binning=binning
+        )
     plt.close(fig)
     return sep_power
