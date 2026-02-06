@@ -390,7 +390,7 @@ def compute_metrics(flags):
             if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "")
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], model_name=flags.name, fname=fname)
+                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_name, model_name=flags.name, fname=fname)
 
             sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
 
@@ -499,8 +499,8 @@ def compute_metrics(flags):
         kpd_val, kpd_err = jetnet.evaluation.kpd(feats_geant, feats_gen)
 
         fpd_result_str = (
-                f"FPD (x10^3): {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f}\n" 
-                f"KPD (x10^3): {kpd_val*1e3:.4f} ± {kpd_err*1e3:.4f}\n"
+                f"FPD: {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f} x 10^-3\n" 
+                f"KPD: {kpd_val*1e3:.4f} ± {kpd_err*1e3:.4f} x 10^-3\n"
             )
         print(fpd_result_str)
 
