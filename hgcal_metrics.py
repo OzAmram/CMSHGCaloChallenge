@@ -1,25 +1,20 @@
+import argparse
 import os
 import warnings
+
+import h5py
+import jetnet
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
-from matplotlib import gridspec
-import argparse
-import h5py as h5
 import torch
 import torch.utils.data as torchdata
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-import jetnet
-import h5py
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import roc_auc_score
 from sklearn.calibration import calibration_curve
 from sklearn.isotonic import IsotonicRegression
-
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.preprocessing import StandardScaler
 
 import utils
 from plotting.plotting_utils import make_hist
+
 
 def train_and_evaluate_cls(model, data_train, data_test, optim, arg):
     """ train the model and evaluate along the way"""
@@ -269,7 +264,7 @@ def compute_metrics(flags):
         print("Load %s" % fname)
         end = None if nevts < 0 else nevts
         scale_fac = 1000.
-        with h5.File(fname,"r") as h5f:
+        with h5py.File(fname,"r") as h5f:
             if(hgcal): 
                 generated = h5f['showers'][:end,:,:dataset_config['MAX_CELLS']] * scale_fac
                 energies = h5f['gen_info'][:end,0] 
@@ -332,7 +327,7 @@ def compute_metrics(flags):
 
                 total_evts = feats_gen.shape[0]
                 if(flags.nevts > 0 and total_evts >= flags.nevts): break
-            except:
+            except (OSError, KeyError, ValueError):
                 print("Bad file, skipping")
 
         print("Loaded %i generated showers" % total_evts)
@@ -386,14 +381,20 @@ def compute_metrics(flags):
                 "Occupancy": 0., 
                 "all": 0., 
                 }
+<<<<<<< occupancy
         for i,feat_name in enumerate(feat_names):
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_names[i].replace(" ", ""))
+=======
+        for i, feat_name in enumerate(feat_names):
+            if flags.plot:
+                fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
+>>>>>>> main
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_name, model_name=flags.name, fname=fname)
 
-            sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
+            sep_power_result_str += "%i %s: %.3e \n" % (i, feat_name, sep_power)
 
             #ignore incident E
             if("Incident" in feat_name): continue
