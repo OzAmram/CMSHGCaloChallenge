@@ -381,15 +381,9 @@ def compute_metrics(flags):
                 "Occupancy": 0., 
                 "all": 0., 
                 }
-<<<<<<< occupancy
-        for i,feat_name in enumerate(feat_names):
-            if flags.plot:
-                fname = os.path.join(flags.plot_folder, feat_names[i].replace(" ", ""))
-=======
         for i, feat_name in enumerate(feat_names):
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
->>>>>>> main
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_name, model_name=flags.name, fname=fname)
