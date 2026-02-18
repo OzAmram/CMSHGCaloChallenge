@@ -21,16 +21,20 @@ def make_hist(
     logy=False,
     binning=None,
     label_loc="best",
-    normalize=True,
     model_name="Model",
     fname="",
     leg_font=16,
 ):
 
     if binning is None:
-        binning = np.linspace(
-            np.quantile(reference, 0.0), np.quantile(reference, 1), 50
-        )
+        lower_bound = np.quantile(reference, 0.0) - 1e-8
+        upper_bound = np.quantile(reference, 1.0) + 1e-8
+        if "occupancy" in xlabel.lower():
+            # avoid binning effects for discrete features
+            delta = np.ceil((upper_bound - lower_bound) / 50)
+            binning = np.arange(lower_bound, upper_bound + 1.0, delta)
+        else:
+            binning = np.linspace(lower_bound, upper_bound, 50)
 
     fig, ax = plt.subplots(
         2,

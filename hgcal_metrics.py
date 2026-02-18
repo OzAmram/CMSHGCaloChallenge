@@ -177,7 +177,7 @@ def get_feat_names(nLayers):
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
     for i in range(nLayers): feat_names.append("Y Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("Y Width Layer %i" % i)
-    for i in range(nLayers): feat_names.append("Sparsity Layer %i" % i)
+    for i in range(nLayers): feat_names.append("Occupancy Layer %i" % i)
 
     return feat_names
 
@@ -211,9 +211,9 @@ def compute_feats(showers, incident_E, geom):
 
 
     layer_voxels = np.reshape(showers,(showers.shape[0],showers.shape[1],-1))
-    layer_sparsity = np.sum(layer_voxels > eps, axis = -1) / layer_voxels.shape[2]
+    layer_occupancy = np.sum(layer_voxels > eps, axis = -1)
 
-    feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_sparsity], axis = -1).astype(np.float32)
+    feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_occupancy], axis = -1).astype(np.float32)
 
     return feats
 
@@ -253,7 +253,7 @@ def compute_metrics(flags):
 
     print("Data shape", shape_plot)
 
-    if(not os.path.exists(flags.plot_folder)): os.system("mkdir -p %s" % flags.plot_folder)
+    if(not os.path.exists(flags.plot_folder)): os.makedirs(flags.plot_folder, exist_ok=True)
 
 
     geom_conv = None
@@ -347,12 +347,12 @@ def compute_metrics(flags):
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
 
-    if(flags.no_sparse):
-        #don't include sparsity feature
-        feats_no_sparse = [idx for idx,feat_name in enumerate(feat_names) if 'Sparsity' not in feat_name] 
-        feats_geant = feats_geant[:, feats_no_sparse]
-        feats_gen = feats_gen[:, feats_no_sparse]
-        feat_names = [feat_names[idx] for idx in feats_no_sparse]
+    if(flags.no_occupancy):
+        #don't include occupancy feature
+        feats_no_occupancy = [idx for idx,feat_name in enumerate(feat_names) if 'Occupancy' not in feat_name] 
+        feats_geant = feats_geant[:, feats_no_occupancy]
+        feats_gen = feats_gen[:, feats_no_occupancy]
+        feat_names = [feat_names[idx] for idx in feats_no_occupancy]
 
 
 
@@ -378,12 +378,18 @@ def compute_metrics(flags):
                 "Energy": 0.,
                 "Center": 0.,
                 "Width": 0.,
-                "Sparsity": 0., 
+                "Occupancy": 0., 
                 "all": 0., 
                 }
+<<<<<<< occupancy
+        for i,feat_name in enumerate(feat_names):
+            if flags.plot:
+                fname = os.path.join(flags.plot_folder, feat_names[i].replace(" ", ""))
+=======
         for i, feat_name in enumerate(feat_names):
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
+>>>>>>> main
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_name, model_name=flags.name, fname=fname)
@@ -399,8 +405,8 @@ def compute_metrics(flags):
                 sum_key = "Center"
             elif("Width" in feat_name):
                 sum_key = "Width"
-            elif("Sparsity" in feat_name):
-                sum_key = "Sparsity"
+            elif("Occupancy" in feat_name):
+                sum_key = "Occupancy"
             else:
                 print("unmatched feat %s" % feat_name)
 
@@ -528,7 +534,7 @@ if(__name__ == "__main__"):
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
-    parser.add_argument('--no_sparse', action='store_true', default=False,help='Dont include sparsity feature')
+    parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
 
     flags = parser.parse_args()
