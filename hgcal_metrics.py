@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import warnings
 
@@ -14,6 +15,33 @@ from sklearn.preprocessing import StandardScaler
 
 import utils
 from plotting.plotting_utils import make_hist
+
+
+def _map_weights_to_layers(weights, n_layers, key_name):
+    if len(weights) == n_layers + 1:
+        mapped_weights = weights[1:]
+    elif len(weights) == n_layers:
+        mapped_weights = weights
+    else:
+        raise ValueError(
+            "%s length %i does not match expected %i or %i"
+            % (key_name, len(weights), n_layers, n_layers + 1)
+        )
+    return np.asarray(mapped_weights, dtype=np.float32)
+
+
+def load_layer_weights_from_json(weights_file, key_name, n_layers):
+    """Load layer weights from JSON and map to shower layer indexing."""
+    if not os.path.exists(weights_file):
+        raise OSError("Layer-weights JSON not found: %s" % weights_file)
+
+    with open(weights_file, "r") as handle:
+        payload = json.load(handle)
+
+    weights = payload.get(key_name)
+    if weights is None:
+        raise ValueError("Missing `%s` in %s" % (key_name, weights_file))
+    return _map_weights_to_layers(weights, n_layers, key_name)
 
 
 def train_and_evaluate_cls(model, data_train, data_test, optim, arg):
@@ -170,9 +198,11 @@ class DNN(torch.nn.Module):
         x = self.layers(x)
         return x
 
-def get_feat_names(nLayers):
+def get_feat_names(nLayers, nRings):
     feat_names = ['Incident Energy', 'Energy Ratio']
     for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
+    for i in range(nLayers): feat_names.append("Longitudinal Profile Layer %i" % i)
+    for i in range(nRings): feat_names.append("Transverse Profile Ring %i" % i)
     for i in range(nLayers): feat_names.append("X Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
     for i in range(nLayers): feat_names.append("Y Center Layer %i" % i)
@@ -182,13 +212,23 @@ def get_feat_names(nLayers):
     return feat_names
 
 
-def compute_feats(showers, incident_E, geom):
+def compute_feats(showers, incident_E, geom, n_rings):
 
 
     eps = 1e-8
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_ratio = E_total / incident_E
-    E_per_layer = np.log10( np.sum(showers, axis=(2)) + eps)
+    E_layer = np.sum(showers, axis=(2))
+    E_per_layer = np.log10(E_layer + eps)
+    longitudinal_profile = E_layer / (E_total + eps)
+
+    ring_vals = geom.ring_map[:, :geom.max_ncell]
+    ring_vals = np.where(ring_vals >= 0, ring_vals, -1).astype(np.int32)
+    ring_energies = np.zeros((showers.shape[0], n_rings), dtype=np.float32)
+    for i in range(n_rings):
+        ring_mask = (ring_vals == i).astype(np.float32)
+        ring_energies[:, i] = np.sum(showers * ring_mask[None, :, :], axis=(1, 2))
+    transverse_profile = ring_energies / (E_total + eps)
 
 
     x_vals = geom.xmap[:, :geom.max_ncell]
@@ -213,7 +253,21 @@ def compute_feats(showers, incident_E, geom):
     layer_voxels = np.reshape(showers,(showers.shape[0],showers.shape[1],-1))
     layer_occupancy = np.sum(layer_voxels > eps, axis = -1)
 
-    feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_occupancy], axis = -1).astype(np.float32)
+    feats = np.concatenate(
+        [
+            incident_E,
+            E_ratio,
+            E_per_layer,
+            longitudinal_profile,
+            transverse_profile,
+            E_x_center,
+            E_x_width,
+            E_y_center,
+            E_y_width,
+            layer_occupancy,
+        ],
+        axis=-1,
+    ).astype(np.float32)
 
     return feats
 
@@ -250,11 +304,24 @@ def compute_metrics(flags):
 
 
     shape_plot = dataset_config['SHAPE_ORIG']
+    ring_vals = geom.ring_map[:, :geom.max_ncell]
+    ring_vals = ring_vals[ring_vals >= 0]
+    nRings = int(np.amax(ring_vals)) + 1 if ring_vals.size else 0
 
     print("Data shape", shape_plot)
+    print("Feature rings", nRings)
 
     if(not os.path.exists(flags.plot_folder)): os.makedirs(flags.plot_folder, exist_ok=True)
 
+    layer_weights_v16 = None
+    if flags.apply_layer_weights_v16:
+        layer_weights_v16 = load_layer_weights_from_json(
+            flags.layer_weights_file,
+            flags.layer_weights_key,
+            shape_plot[1],
+        )
+        print("Applying %s from %s" % (flags.layer_weights_key, flags.layer_weights_file))
+        print("Layer weight range: %.3f to %.3f" % (np.amin(layer_weights_v16), np.amax(layer_weights_v16)))
 
     geom_conv = None
 
@@ -274,6 +341,8 @@ def compute_metrics(flags):
 
         energies = np.reshape(energies,(-1,1))
         generated = np.reshape(generated,shape_plot)
+        if layer_weights_v16 is not None:
+            generated *= layer_weights_v16.reshape((1, -1, 1))
         if(EMin > 0.):
             mask = generated < EMin
             
@@ -294,13 +363,15 @@ def compute_metrics(flags):
         return generated,energies
 
     def LoadSample(fname, EMin = -1.0, nevts = -1, reprocess=False, EMin_rescale=False):
-        feat_file = fname + ".feat.npz"
+        feat_file = fname + ".feat.v2profiles.npz"
+        if layer_weights_v16 is not None:
+            feat_file = fname + ".feat.v2profiles.v16weights.npz"
         if(os.path.exists(feat_file) and not reprocess):
             print("Load %s" % feat_file)
             feats = np.load(feat_file)['feats']
         else:
             showers, energies = LoadFile(fname, EMin, flags.nevts, EMin_rescale=EMin_rescale)
-            feats = compute_feats(showers, energies, geom)
+            feats = compute_feats(showers, energies, geom, nRings)
             np.savez(feat_file, feats=feats)
 
         return feats
@@ -345,7 +416,7 @@ def compute_metrics(flags):
 
 
     nLayers = shape_plot[1]
-    feat_names = get_feat_names(nLayers)
+    feat_names = get_feat_names(nLayers, nRings)
 
     if(flags.no_occupancy):
         #don't include occupancy feature
@@ -375,12 +446,23 @@ def compute_metrics(flags):
         fname = ""
         sep_power_result_str = ""
         sep_power_sums = {
-                "Energy": 0.,
-                "Center": 0.,
-                "Width": 0.,
-                "Occupancy": 0., 
-                "all": 0., 
-                }
+            "Energy": 0.,
+            "LongitudinalProfile": 0.,
+            "TransverseProfile": 0.,
+            "Center": 0.,
+            "Width": 0.,
+            "Occupancy": 0.,
+            "all": 0.,
+        }
+        sep_power_counts = {
+            "Energy": 0,
+            "LongitudinalProfile": 0,
+            "TransverseProfile": 0,
+            "Center": 0,
+            "Width": 0,
+            "Occupancy": 0,
+            "all": 0,
+        }
         for i, feat_name in enumerate(feat_names):
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
@@ -393,7 +475,11 @@ def compute_metrics(flags):
             #ignore incident E
             if("Incident" in feat_name): continue
 
-            if("Energy" in feat_name):
+            if("Longitudinal Profile" in feat_name):
+                sum_key = "LongitudinalProfile"
+            elif("Transverse Profile" in feat_name):
+                sum_key = "TransverseProfile"
+            elif("Energy" in feat_name):
                 sum_key = "Energy"
             elif("Center" in feat_name):
                 sum_key = "Center"
@@ -403,9 +489,12 @@ def compute_metrics(flags):
                 sum_key = "Occupancy"
             else:
                 print("unmatched feat %s" % feat_name)
+                continue
 
             sep_power_sums[sum_key] += sep_power
+            sep_power_counts[sum_key] += 1
             sep_power_sums['all'] += sep_power
+            sep_power_counts['all'] += 1
 
         #detailed breakdown in sep file
         with open(os.path.join(flags.plot_folder, 'sep_power.txt'), 'w') as f:
@@ -416,10 +505,9 @@ def compute_metrics(flags):
         #group by categories for metrics file
         sep_power_metrics_str = ""
         for key in sep_power_sums.keys():
-            norm = nLayers
-            if("Energy" in key): norm = nLayers+1 # Extra E ratio feature
-            if("Center" in key or "Width" in key): norm = 2.0 * nLayers # X and Y features
-            if("all" in key): norm = len(feat_names) - 1
+            norm = sep_power_counts[key]
+            if norm <= 0:
+                continue
             avg_sep = sep_power_sums[key] / norm
             sep_power_metrics_str += "Avg separation power of %s features: %.3e \n" % (key, avg_sep)
 
@@ -530,6 +618,12 @@ if(__name__ == "__main__"):
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
     parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
+    parser.add_argument('--apply_layer_weights_v16', action='store_true', default=False,
+                        help='Apply per-layer weights loaded from JSON before feature extraction')
+    parser.add_argument('--layer_weights_file', default='HGCalRecHit_layer_weights.json',
+                        help='JSON file with HGCal layer weights')
+    parser.add_argument('--layer_weights_key', default='weightsPerLayer_V16',
+                        help='Key to read from --layer_weights_file (default: weightsPerLayer_V16)')
 
     flags = parser.parse_args()
     print("EMin_rescale", flags.EMin_rescale)
