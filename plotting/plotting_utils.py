@@ -13,7 +13,6 @@ plt.rc("font", **{"size": 16})
 def dup(a):
     return np.append(a, a[-1])
 
-
 def make_hist(
     reference,
     generated,
@@ -22,15 +21,20 @@ def make_hist(
     logy=False,
     binning=None,
     label_loc="best",
-    normalize=True,
+    model_name="Model",
     fname="",
     leg_font=16,
 ):
 
     if binning is None:
-        binning = np.linspace(
-            np.quantile(reference, 0.0), np.quantile(reference, 1), 50
-        )
+        lower_bound = np.quantile(reference, 0.0) - 1e-8
+        upper_bound = np.quantile(reference, 1.0) + 1e-8
+        if "occupancy" in xlabel.lower():
+            # avoid binning effects for discrete features
+            delta = np.ceil((upper_bound - lower_bound) / 50)
+            binning = np.arange(lower_bound, upper_bound + 1.0, delta)
+        else:
+            binning = np.linspace(lower_bound, upper_bound, 50)
 
     fig, ax = plt.subplots(
         2,
@@ -46,7 +50,8 @@ def make_hist(
         bins=binning,
         density=False,
     )
-    dist_ref_normalized = dist_ref / dist_ref.sum()
+    bin_widths = np.diff(binning)
+    dist_ref_normalized = dist_ref / (bin_widths * dist_ref.sum())
     dist_ref_error = dist_ref_normalized / np.sqrt(dist_ref)
     dist_ref_ratio_error = dist_ref_error / dist_ref_normalized
     dist_ref_ratio_error_isnan = np.isnan(dist_ref_ratio_error)
@@ -81,7 +86,8 @@ def make_hist(
 
     # Generator lines
     dist_gen, binning = np.histogram(generated, bins=binning, density=False)
-    dist_gen_normalized = dist_gen / dist_gen.sum()
+    bin_widths = np.diff(binning)
+    dist_gen_normalized = dist_gen / (bin_widths * dist_gen.sum())
     dist_gen_error = dist_gen_normalized / np.sqrt(dist_gen)
     ratio = dist_gen_normalized / dist_ref_normalized
     ratio_err = dist_gen_error / dist_ref_normalized
@@ -92,7 +98,7 @@ def make_hist(
     ax[0].step(
         binning,
         dup(dist_gen_normalized),
-        label="Model",
+        label=model_name,
         where="post",
         linewidth=1.0,
         alpha=1.0,
@@ -138,11 +144,13 @@ def make_hist(
 
     if logy:
         ax[0].set_yscale("log")
+    else:
+        ax[0].set_ylim(0.0, None)
     ax[1].axhline(0.7, c="k", ls="--", lw=0.5)
     ax[1].axhline(1.3, c="k", ls="--", lw=0.5)
     ax[0].set_ylabel(ylabel, fontsize=leg_font)
     ax[1].set_xlabel(xlabel, fontsize=leg_font)
-    ax[1].set_ylabel(r"$\frac{\text{Model}}{\text{Geant4}}$", fontsize=leg_font)
+    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
     ax[0].legend(
         loc=label_loc,
         frameon=False,
@@ -151,12 +159,22 @@ def make_hist(
         fontsize=leg_font,
     )
     fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
+    sep_power = utils._separation_power(
+        dist_ref_normalized, dist_gen_normalized, binning
+    )
 
-    sep_power = utils._separation_power(dist_ref, dist_gen, binning)
-
-    # should probably make them pdfs at some point
-    # plt.savefig(fname, dpi=300, format="pdf")
     if len(fname) > 0:
-        fig.savefig(fname)
+        fig.savefig(fname + ".png")
+        fig.savefig(fname + ".pdf", dpi=300, format="pdf")
+
+        #save hists for later
+        np.savez(
+             fname+".npz", 
+             dist_ref=dist_ref_normalized, 
+             dist_ref_err=dist_ref_error, 
+             dist_gen=dist_gen_normalized, 
+             dist_gen_err=dist_gen_error, 
+             binning=binning
+        )
     plt.close(fig)
     return sep_power

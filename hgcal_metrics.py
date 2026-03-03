@@ -1,25 +1,20 @@
+import argparse
 import os
 import warnings
+
+import h5py
+import jetnet
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
-from matplotlib import gridspec
-import argparse
-import h5py as h5
 import torch
 import torch.utils.data as torchdata
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
-import jetnet
-import h5py
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import roc_auc_score
 from sklearn.calibration import calibration_curve
 from sklearn.isotonic import IsotonicRegression
-
+from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.preprocessing import StandardScaler
 
 import utils
 from plotting.plotting_utils import make_hist
+
 
 def train_and_evaluate_cls(model, data_train, data_test, optim, arg):
     """ train the model and evaluate along the way"""
@@ -29,7 +24,7 @@ def train_and_evaluate_cls(model, data_train, data_test, optim, arg):
         for i in range(arg.cls_n_epochs):
             train_cls(model, data_train, optim, i, arg)
             with torch.no_grad():
-                eval_acc, _, _ = evaluate_cls(model, data_test, arg)
+                eval_acc, _ = evaluate_cls(model, data_test, arg)
             if eval_acc > best_eval_acc:
                 best_eval_acc = eval_acc
                 arg.best_epoch = i+1
@@ -113,9 +108,6 @@ def evaluate_cls(model, data_test, arg, final_eval=False, calibration_data=None)
     print("Accuracy on test set is", eval_acc)
     eval_auc = roc_auc_score(result_true, result_pred)
     print("AUC on test set is", eval_auc)
-    JSD = - BCE + np.log(2.)
-    print("BCE loss of test set is {:.4f}, JSD of the two dists is {:.4f}".format(BCE,
-                                                                                  JSD/np.log(2.)))
     if final_eval:
         prob_true, prob_pred = calibration_curve(result_true, result_pred, n_bins=10)
         print("unrescaled calibration curve:", prob_true, prob_pred)
@@ -124,16 +116,7 @@ def evaluate_cls(model, data_test, arg, final_eval=False, calibration_data=None)
         eval_acc = accuracy_score(result_true, np.clip(np.round(rescaled_pred), 0., 1.0))
         print("Rescaled accuracy is", eval_acc)
         eval_auc = roc_auc_score(result_true, rescaled_pred)
-        print("rescaled AUC of dataset is", eval_auc)
-        prob_true, prob_pred = calibration_curve(result_true, rescaled_pred, n_bins=10)
-        print("rescaled calibration curve:", prob_true, prob_pred)
-        # calibration was done after sigmoid, therefore only BCELoss() needed here:
-        BCE = torch.nn.BCELoss()(torch.tensor(rescaled_pred), torch.tensor(result_true))
-        JSD = - BCE.cpu().numpy() + np.log(2.)
-        otp_str = "rescaled BCE loss of test set is {:.4f}, "+\
-            "rescaled JSD of the two dists is {:.4f}"
-        print(otp_str.format(BCE, JSD/np.log(2.)))
-    return eval_acc, eval_auc, JSD/np.log(2.)
+    return eval_acc, eval_auc 
 
 def calibrate_classifier(model, calibration_data, arg):
     """ reads in calibration data and performs a calibration with isotonic regression"""
@@ -188,21 +171,21 @@ class DNN(torch.nn.Module):
         return x
 
 def get_feat_names(nLayers):
-    feat_names = ['Incident E', 'E Ratio']
+    feat_names = ['Incident Energy', 'Energy Ratio']
     for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
     for i in range(nLayers): feat_names.append("Y Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("Y Width Layer %i" % i)
-    for i in range(nLayers): feat_names.append("Sparsity Layer %i" % i)
+    for i in range(nLayers): feat_names.append("Occupancy Layer %i" % i)
 
     return feat_names
 
 
 def compute_feats(showers, incident_E, geom):
 
-    eps = 1e-8
 
+    eps = 1e-8
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_ratio = E_total / incident_E
     E_per_layer = np.log10( np.sum(showers, axis=(2)) + eps)
@@ -227,12 +210,10 @@ def compute_feats(showers, incident_E, geom):
     #E_phi_center, E_phi_width = utils.ang_center_spread(phi_vals, showers, axis=(2))
 
 
-    eps = 1e-6
     layer_voxels = np.reshape(showers,(showers.shape[0],showers.shape[1],-1))
-    layer_sparsity = np.sum(layer_voxels > eps, axis = -1) / layer_voxels.shape[2]
+    layer_occupancy = np.sum(layer_voxels > eps, axis = -1)
 
-    #feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width], axis = -1).astype(np.float32)
-    feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_sparsity], axis = -1).astype(np.float32)
+    feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_occupancy], axis = -1).astype(np.float32)
 
     return feats
 
@@ -272,18 +253,18 @@ def compute_metrics(flags):
 
     print("Data shape", shape_plot)
 
-    if(not os.path.exists(flags.plot_folder)): os.system("mkdir -p %s" % flags.plot_folder)
+    if(not os.path.exists(flags.plot_folder)): os.makedirs(flags.plot_folder, exist_ok=True)
 
 
     geom_conv = None
 
 
 
-    def LoadFile(fname, EMin = -1.0, nevts = -1):
+    def LoadFile(fname, EMin = -1.0, nevts = -1, EMin_rescale=True):
         print("Load %s" % fname)
         end = None if nevts < 0 else nevts
         scale_fac = 1000.
-        with h5.File(fname,"r") as h5f:
+        with h5py.File(fname,"r") as h5f:
             if(hgcal): 
                 generated = h5f['showers'][:end,:,:dataset_config['MAX_CELLS']] * scale_fac
                 energies = h5f['gen_info'][:end,0] 
@@ -295,30 +276,30 @@ def compute_metrics(flags):
         generated = np.reshape(generated,shape_plot)
         if(EMin > 0.):
             mask = generated < EMin
-            #print("Applying ECut " + str(EMin))
-            #print('before', np.mean(generated))
-
+            
             #Preserve layer energies after applying threshold
-            generated[generated < 0] = 0 
-            d_masked = np.where(mask, generated, 0.)
-            lostE = np.sum(d_masked, axis = -1, keepdims=True)
-            ELayer = np.sum(generated, axis = -1, keepdims=True)
-            eps = 1e-10
-            rescale = (ELayer + eps)/(ELayer - lostE +eps)
-            rescale[ELayer < EMin] = 0.
+            if(EMin_rescale):
+                generated[generated < 0] = 0 
+                d_masked = np.where(mask, generated, 0.)
+                lostE = np.sum(d_masked, axis = -1, keepdims=True)
+                ELayer = np.sum(generated, axis = -1, keepdims=True)
+                eps = 1e-10
+                rescale = (ELayer + eps)/(ELayer - lostE +eps)
+                rescale[ELayer < EMin] = 0.
+                generated *= rescale
+
             generated[mask] = 0.
-            generated *= rescale
-            #print('after', np.mean(generated))
+
 
         return generated,energies
 
-    def LoadSample(fname, EMin = -1.0, nevts = -1, reprocess=False):
+    def LoadSample(fname, EMin = -1.0, nevts = -1, reprocess=False, EMin_rescale=False):
         feat_file = fname + ".feat.npz"
         if(os.path.exists(feat_file) and not reprocess):
             print("Load %s" % feat_file)
             feats = np.load(feat_file)['feats']
         else:
-            showers, energies = LoadFile(fname, EMin, flags.nevts)
+            showers, energies = LoadFile(fname, EMin, flags.nevts, EMin_rescale=EMin_rescale)
             feats = compute_feats(showers, energies, geom)
             np.savez(feat_file, feats=feats)
 
@@ -339,14 +320,14 @@ def compute_metrics(flags):
         feats_gen = feats_geant = None
         for f_sample in f_sample_list: 
             try:
-                feats = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess)
+                feats = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess, EMin_rescale=flags.EMin_rescale)
                 if(feats_gen is None): feats_gen = feats
                 else: 
                     feats_gen = np.concatenate((feats_gen, feats), axis=0)
 
                 total_evts = feats_gen.shape[0]
                 if(flags.nevts > 0 and total_evts >= flags.nevts): break
-            except:
+            except (OSError, KeyError, ValueError):
                 print("Bad file, skipping")
 
         print("Loaded %i generated showers" % total_evts)
@@ -366,21 +347,22 @@ def compute_metrics(flags):
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
 
-    if(flags.no_sparse):
-        #don't include sparsity feature
-        feats_no_sparse = [idx for idx,feat_name in enumerate(feat_names) if 'Sparsity' not in feat_name] 
-        feats_geant = feats_geant[:, feats_no_sparse]
-        feats_gen = feats_gen[:, feats_no_sparse]
-        feat_names = [feat_names[idx] for idx in feats_no_sparse]
+    if(flags.no_occupancy):
+        #don't include occupancy feature
+        feats_no_occupancy = [idx for idx,feat_name in enumerate(feat_names) if 'Occupancy' not in feat_name] 
+        feats_geant = feats_geant[:, feats_no_occupancy]
+        feats_gen = feats_gen[:, feats_no_occupancy]
+        feat_names = [feat_names[idx] for idx in feats_no_occupancy]
 
 
 
     do_hists = do_classifier = do_fpd = False
 
+    print("mode", flags.mode)
     if(flags.mode == "all"):
         do_hists = do_classifier = do_fpd = True
     elif(flags.mode == "hist"):
-        do_hist = True
+        do_hists = True
     elif(flags.mode == "classifier" or flags.mode == "cls"):
         do_classifier = True
     elif(flags.mode == "fpd" or flags.mode == "kpd"):
@@ -392,23 +374,61 @@ def compute_metrics(flags):
     if(do_hists):
         fname = ""
         sep_power_result_str = ""
-        sep_power_sum = 0.0
-        print(feats_gen.shape)
-        for i in range(len(feat_names)):
-            if(flags.plot): fname = flags.plot_folder + feat_names[i].replace(" ", "") + ".png"
+        sep_power_sums = {
+                "Energy": 0.,
+                "Center": 0.,
+                "Width": 0.,
+                "Occupancy": 0., 
+                "all": 0., 
+                }
+        for i, feat_name in enumerate(feat_names):
+            if flags.plot:
+                fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_names[i], fname =  fname)
+                sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_name, model_name=flags.name, fname=fname)
 
-            sep_power_sum += sep_power
-            sep_power_result_str += "%i %s: %.3e \n" % (i, feat_names[i], sep_power)
+            sep_power_result_str += "%i %s: %.3e \n" % (i, feat_name, sep_power)
 
+            #ignore incident E
+            if("Incident" in feat_name): continue
 
-        sep_power_result_str += "\n TOTAL : %.2f" % sep_power_sum
+            if("Energy" in feat_name):
+                sum_key = "Energy"
+            elif("Center" in feat_name):
+                sum_key = "Center"
+            elif("Width" in feat_name):
+                sum_key = "Width"
+            elif("Occupancy" in feat_name):
+                sum_key = "Occupancy"
+            else:
+                print("unmatched feat %s" % feat_name)
+
+            sep_power_sums[sum_key] += sep_power
+            sep_power_sums['all'] += sep_power
+
+        #detailed breakdown in sep file
         with open(os.path.join(flags.plot_folder, 'sep_power.txt'), 'w') as f:
             f.write(sep_power_result_str)
 
-    #FPD KPD
+        print("Saved all sep. power metrics in %s" %  os.path.join(flags.plot_folder, "sep_power.txt"))
+
+        #group by categories for metrics file
+        sep_power_metrics_str = ""
+        for key in sep_power_sums.keys():
+            norm = nLayers
+            if("Energy" in key): norm = nLayers+1 # Extra E ratio feature
+            if("Center" in key or "Width" in key): norm = 2.0 * nLayers # X and Y features
+            if("all" in key): norm = len(feat_names) - 1
+            avg_sep = sep_power_sums[key] / norm
+            sep_power_metrics_str += "Avg separation power of %s features: %.3e \n" % (key, avg_sep)
+
+        print(sep_power_metrics_str)
+
+        with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'w') as f:
+            f.write(sep_power_metrics_str)
+
+
 
 
     if(do_classifier):
@@ -461,14 +481,13 @@ def compute_metrics(flags):
 
             with torch.no_grad():
                 print("Now looking at independent dataset:")
-                eval_acc, eval_auc, eval_JSD = evaluate_cls(classifier, test_dataloader, flags,
+                eval_acc, eval_auc = evaluate_cls(classifier, test_dataloader, flags,
                                                             final_eval=True,
                                                             calibration_data=val_dataloader)
-            print("Final result of classifier test (AUC / JSD):")
-            print("{:.4f} / {:.4f}".format(eval_auc, eval_JSD))
+            cls_string = "Result of classifier test (AUC): %.4f \n" % eval_auc
+            print(cls_string)
             with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'a') as f:
-                f.write('Final result of classifier test (AUC / JSD):\n'+\
-                        '{:.4f} / {:.4f}\n\n'.format(eval_auc, eval_JSD))
+                f.write(cls_string)
 
     if(do_fpd):
         min_samples = min(feats_geant.shape[0], 20000)
@@ -476,12 +495,15 @@ def compute_metrics(flags):
         kpd_val, kpd_err = jetnet.evaluation.kpd(feats_geant, feats_gen)
 
         fpd_result_str = (
-                f"FPD (x10^3): {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f}\n" 
-                f"KPD (x10^3): {kpd_val*1e3:.4f} ± {kpd_err*1e3:.4f}\n"
+                f"FPD: {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f} x 10^-3\n" 
+                f"KPD: {kpd_val*1e3:.4f} ± {kpd_err*1e3:.4f} x 10^-3\n"
             )
         print(fpd_result_str)
+
         with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'a') as f:
             f.write(fpd_result_str)
+
+    print("Final metrics saved in %s" % (os.path.join(flags.plot_folder, "metrics.txt")))
 
 
 if(__name__ == "__main__"):
@@ -493,7 +515,9 @@ if(__name__ == "__main__"):
     parser.add_argument('--generated', '-g', default='', help='Generated showers')
     parser.add_argument('--config', '-c', default='config_dataset2.json', help='Training parameters')
     parser.add_argument('-n', '--nevts', type=int,default=-1, help='Number of events to load')
-    parser.add_argument('--EMin', type = float, default=-1.0, help='Voxel min energy')
+    parser.add_argument('--EMin', type = float, default=0.00001, help='Voxel min energy')
+    parser.add_argument('--EMin_no_rescale', dest='EMin_rescale', action='store_false', help='When applying min energy cut, do not rescale other voxels to preserve layer energy (default is to rescale)')
+    parser.add_argument('--name', default='Model', help='Model name (for plot labels)')
 
     parser.add_argument('--plot', default=False, action='store_true', help='Save 1D feature plots')
 
@@ -504,8 +528,9 @@ if(__name__ == "__main__"):
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
-    parser.add_argument('--no_sparse', action='store_true', default=False,help='Dont include sparsity feature')
+    parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
 
     flags = parser.parse_args()
+    print("EMin_rescale", flags.EMin_rescale)
     compute_metrics(flags)
