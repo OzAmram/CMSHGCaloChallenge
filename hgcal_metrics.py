@@ -171,7 +171,7 @@ class DNN(torch.nn.Module):
         return x
 
 def get_feat_names(nLayers):
-    feat_names = ['Incident Energy', 'Energy Ratio']
+    feat_names = ['Energy Ratio']
     for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
@@ -213,7 +213,7 @@ def compute_feats(showers, incident_E, geom):
     layer_voxels = np.reshape(showers,(showers.shape[0],showers.shape[1],-1))
     layer_occupancy = np.sum(layer_voxels > eps, axis = -1)
 
-    feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_occupancy], axis = -1).astype(np.float32)
+    feats = np.concatenate([E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_occupancy], axis = -1).astype(np.float32)
 
     return feats
 
@@ -335,7 +335,7 @@ def compute_metrics(flags):
 
     f_geant_list = utils.get_files(dataset_config['EVAL'], folder=flags.data_folder)
     for f_sample in f_geant_list:
-        feats = LoadSample( f_sample, flags.EMin, flags.nevts)
+        feats = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess)
 
         if(feats_geant is None): feats_geant = feats
         else: feats_geant = np.concatenate((feats_geant, feats), axis=0)
@@ -343,7 +343,8 @@ def compute_metrics(flags):
         total_evts = feats_geant.shape[0]
         if(flags.nevts > 0 and total_evts >= flags.nevts): break
 
-
+    #TODO maybe add a check for nan or inf in the features
+    
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
 
