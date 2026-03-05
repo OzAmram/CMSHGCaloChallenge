@@ -171,7 +171,7 @@ class DNN(torch.nn.Module):
         return x
 
 def get_feat_names(nLayers):
-    feat_names = ['Energy Ratio']
+    feat_names = ["Incident Energy", "Energy Ratio"]
     for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
@@ -213,7 +213,7 @@ def compute_feats(showers, incident_E, geom):
     layer_voxels = np.reshape(showers,(showers.shape[0],showers.shape[1],-1))
     layer_occupancy = np.sum(layer_voxels > eps, axis = -1)
 
-    feats = np.concatenate([E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_occupancy], axis = -1).astype(np.float32)
+    feats = np.concatenate([incident_E, E_ratio, E_per_layer, E_x_center, E_x_width, E_y_center, E_y_width, layer_occupancy], axis = -1).astype(np.float32)
 
     return feats
 
@@ -347,6 +347,12 @@ def compute_metrics(flags):
     
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
+
+    if(flags.single_energy):
+        # remove incident energy feature
+        feats_geant = feats_geant[:, 1:]
+        feats_gen = feats_gen[:, 1:]
+        feat_names = feat_names[1:]
 
     if(flags.no_occupancy):
         #don't include occupancy feature
@@ -528,6 +534,7 @@ if(__name__ == "__main__"):
     parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory')
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
+    parser.add_argument('--single_energy', action='store_true', default=False,help='Flag for the evaluation at fixed incident energy')
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
     parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
