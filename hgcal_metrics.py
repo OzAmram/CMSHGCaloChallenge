@@ -171,7 +171,7 @@ class DNN(torch.nn.Module):
         return x
 
 def get_feat_names(nLayers):
-    feat_names = ['Incident Energy', 'Energy Ratio']
+    feat_names = ["Incident Energy", "Energy Ratio"]
     for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
@@ -335,7 +335,7 @@ def compute_metrics(flags):
 
     f_geant_list = utils.get_files(dataset_config['EVAL'], folder=flags.data_folder)
     for f_sample in f_geant_list:
-        feats = LoadSample( f_sample, flags.EMin, flags.nevts)
+        feats = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess)
 
         if(feats_geant is None): feats_geant = feats
         else: feats_geant = np.concatenate((feats_geant, feats), axis=0)
@@ -343,9 +343,22 @@ def compute_metrics(flags):
         total_evts = feats_geant.shape[0]
         if(flags.nevts > 0 and total_evts >= flags.nevts): break
 
+    # sanity checks on the calculated features
+    inf_gen = np.isinf(feats_gen)
+    nan_gen = np.isnan(feats_gen)
+    inf_geant = np.isinf(feats_geant)
+    nan_geant = np.isnan(feats_geant)
+    print(f"Number of Infs: Geant4 {np.sum(inf_geant)}, Model {np.sum(inf_gen)}")
+    print(f"Number of Nans: Geant4 {np.sum(nan_geant)}, Model {np.sum(nan_gen)}")
 
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
+
+    if(flags.single_energy):
+        # remove incident energy feature
+        feats_geant = feats_geant[:, 1:]
+        feats_gen = feats_gen[:, 1:]
+        feat_names = feat_names[1:]
 
     if(flags.no_occupancy):
         #don't include occupancy feature
@@ -527,6 +540,7 @@ if(__name__ == "__main__"):
     parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory')
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
+    parser.add_argument('--single_energy', action='store_true', default=False,help='Flag for the evaluation at fixed incident energy')
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
     parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
