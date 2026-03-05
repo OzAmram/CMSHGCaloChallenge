@@ -343,8 +343,14 @@ def compute_metrics(flags):
         total_evts = feats_geant.shape[0]
         if(flags.nevts > 0 and total_evts >= flags.nevts): break
 
-    #TODO maybe add a check for nan or inf in the features
-    
+    # sanity checks on the calculated features
+    inf_gen = np.isinf(feats_gen)
+    nan_gen = np.isnan(feats_gen)
+    inf_geant = np.isinf(feats_geant)
+    nan_geant = np.isnan(feats_geant)
+    print(f"Number of Infs: Geant4 {np.sum(inf_geant)}, Model {np.sum(inf_gen)}")
+    print(f"Number of Nans: Geant4 {np.sum(nan_geant)}, Model {np.sum(nan_gen)}")
+
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
 
