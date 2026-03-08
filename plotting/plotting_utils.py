@@ -30,14 +30,12 @@ def make_hist(
         combined = np.concatenate([reference, generated])
         lower_bound = np.quantile(combined, 0.0) - 1e-8
         upper_bound = np.quantile(combined, 1.0) + 1e-8
-        if np.ptp(combined) < 1e-10:
-            # constant feature — nothing meaningful to plot
-            plt.close("all")
-            return 0.0
         if "occupancy" in xlabel.lower():
             # avoid binning effects for discrete features
-            delta = np.ceil((upper_bound - lower_bound) / 50)
-            binning = np.arange(lower_bound, upper_bound + 1.0, delta)
+            delta = max(np.ceil((upper_bound - lower_bound) / 50), 1.0)
+            binning = np.arange(lower_bound, upper_bound + delta, delta)
+            if len(binning) < 2:
+                binning = np.linspace(lower_bound, lower_bound + delta, 3)
         else:
             binning = np.linspace(lower_bound, upper_bound, 50)
 
