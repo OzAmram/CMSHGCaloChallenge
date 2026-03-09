@@ -17,9 +17,31 @@ def get_files(field, folder=""):
             print("File list %s not found" % field)
             return []
         if(".h5" in field): #single file
-            return [field]
+            if(len(folder) > 0 and folder not in field):
+                path = os.path.join(folder, field)
+            else:
+                path = field
+            if(not os.path.exists(path)):
+                print("Missing file %s, skipping" % path)
+                return []
+            return [path]
         with open(field, "r") as f:
-            f_list = [os.path.join(folder, line.strip()) for line in f]
+            f_list = []
+            for line in f:
+                line = line.strip()
+                if(len(line) == 0): continue
+                if(line.lower() == "name"): continue
+                if(line.startswith("#")): continue
+
+                if(len(folder) > 0 and folder not in line):
+                    path = os.path.join(folder, line)
+                else:
+                    path = line
+
+                if(path.endswith(".h5") and not os.path.exists(path)):
+                    print("Missing file %s, skipping" % path)
+                    continue
+                f_list.append(path)
             return f_list
     else:
         print("Unrecognized file param ", field)

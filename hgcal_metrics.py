@@ -409,7 +409,11 @@ def compute_metrics(flags):
 
     f_geant_list = utils.get_files(dataset_config['EVAL'], folder=flags.data_folder)
     for f_sample in f_geant_list:
-        feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts)
+        try:
+            feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts)
+        except (OSError, KeyError, ValueError):
+            print("Bad Geant file, skipping")
+            continue
 
         if(feats_geant is None):
             feats_geant, long_geant, trans_geant = feats, lp, tp
@@ -420,6 +424,9 @@ def compute_metrics(flags):
 
         total_evts = feats_geant.shape[0]
         if(flags.nevts > 0 and total_evts >= flags.nevts): break
+
+    if(feats_geant is None):
+        raise RuntimeError("No valid Geant files were loaded from EVAL list.")
 
 
     nLayers = shape_plot[1]
