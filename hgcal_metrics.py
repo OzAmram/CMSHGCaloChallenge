@@ -362,7 +362,14 @@ def compute_metrics(flags):
         suffix = ".feat.v3"
         if layer_weights is not None:
             suffix += ".%s" % flags.layer_weights_key
-        feat_file = fname + suffix + ".npz"
+        feat_basename = os.path.basename(fname) + suffix + ".npz"
+
+        # Try cache next to source file first; fall back to plot_folder for
+        # read-only source locations (e.g. /eos).
+        feat_file_src = fname + suffix + ".npz"
+        feat_file_local = os.path.join(flags.plot_folder, feat_basename)
+        feat_file = feat_file_src if os.path.exists(feat_file_src) else feat_file_local
+
         if(os.path.exists(feat_file) and not reprocess):
             print("Load %s" % feat_file)
             data = np.load(feat_file)
@@ -371,7 +378,10 @@ def compute_metrics(flags):
             showers, energies = LoadFile(fname, EMin, flags.nevts, EMin_rescale=EMin_rescale)
             feats = compute_feats(showers, energies, geom)
             long_profile, trans_profile = compute_profiles(showers, geom, nRings)
-            np.savez(feat_file, feats=feats, long_profile=long_profile, trans_profile=trans_profile)
+            try:
+                np.savez(feat_file_src, feats=feats, long_profile=long_profile, trans_profile=trans_profile)
+            except OSError:
+                np.savez(feat_file_local, feats=feats, long_profile=long_profile, trans_profile=trans_profile)
             return feats, long_profile, trans_profile
 
 
@@ -510,7 +520,7 @@ def compute_metrics(flags):
 
         # Per-layer longitudinal profile histograms
         for i in range(nLayers):
-            feat_name = "Longitudinal Profile Layer %i" % i
+            feat_name = "Energy fraction layer %i" % i
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
             with warnings.catch_warnings():
@@ -524,7 +534,7 @@ def compute_metrics(flags):
 
         # Per-ring transverse profile histograms
         for i in range(nRings):
-            feat_name = "Transverse Profile Ring %i" % i
+            feat_name = "Energy fraction ring %i" % i
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
             with warnings.catch_warnings():
