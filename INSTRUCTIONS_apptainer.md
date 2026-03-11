@@ -3,6 +3,7 @@
 > TL;DR: 
 > * Create a apptainer image with your runtime depedencies 
 > * Create scripts for running pion and photon generation
+> * Add arguments for batch size and samples used. 
 
 Your finished submission should be a `.tar.gz` file with the following contents: 
 
@@ -72,15 +73,16 @@ For example (using CaloDiffusion)
 ```bash
 #/bin/bash
 
-if [ $# -lt 3 ]; then
+if [ $# -lt 4 ]; then
     echo "Error: Missing required arguments" >&2
-    echo "Usage: $0 <batch size> <data directory> <output h5>" >&2
+    echo "Usage: $0 <batch size> <N Samples> <data directory> <output h5>" >&2
     exit 1
 fi
 
 BATCHES="$1"
-DATA_DIR="$2"
-OUTPUT_FILE="$3"
+N_SAMPLES="$2"
+DATA_DIR="$3"
+OUTPUT_FILE="$4"
 
 echo "Loading data from: $DATA_DIR"
 echo "Output will be saved to: $OUTPUT_FILE"
@@ -88,13 +90,13 @@ echo "Output will be saved to: $OUTPUT_FILE"
 CONFIG="CaloDiffusion/configs/config_HGCal_photons.json"
 CHECKPOINT="CaloDiffusion/checkpoints/checkpoint_HGCal_photons.pth"
 
-RUN_COMMAND="python3 CaloDiffusion/calodiffusion/inference.py --batch-size $BATCHES --config $CONFIG --data-folder $DATA_DIR --hgcal sample -g $OUTPUT_FILE --model-loc $CHECKPOINT"
+RUN_COMMAND="python3 CaloDiffusion/calodiffusion/inference.py --batch-size $BATCHES --nvents $N_SAMPLES --config $CONFIG --data-folder $DATA_DIR --hgcal sample -g $OUTPUT_FILE --model-loc $CHECKPOINT"
 
 apptainer exec calodif-test.sif pip3 install -e CaloDiffusion/
 apptainer exec calodif-test.sif $RUN_COMMAND
 
 ```
-The batch size argument is required (it is needed to run compute tests). 
+The batch size and number of samples arguments are required (they are needed to run compute tests). 
 
 The input and output paths are optional to include as cli args but they must be accessable (e.g. not hardcoded in the codebase itself). 
 
