@@ -65,35 +65,37 @@ If you want to install Singularity on your MacBook, please follow these steps (T
 
 ## Create scripts for photon and pion generation
 
-The submission should contain two scripts that show how to run the photon and pion generation. They must be self contained and do not require the runner to select different model checkpoints or configurations (to reduce the possiblity of the model being run incorrectly). 
+The submission should contain scripts that show how to run the photon and pion generation (if applicable). They must be self contained and do not require the runner to select different model checkpoints or configurations (to reduce the possiblity of the model being run incorrectly). 
 
 For example (using CaloDiffusion)
 
 ```bash
 #/bin/bash
 
-if [ $# -lt 2 ]; then
+if [ $# -lt 3 ]; then
     echo "Error: Missing required arguments" >&2
-    echo "Usage: $0 <data directory> <output h5>" >&2
+    echo "Usage: $0 <batch size> <data directory> <output h5>" >&2
     exit 1
 fi
 
-DATA_DIR="$1"
-OUTPUT_FILE="$2"
+BATCHES="$1"
+DATA_DIR="$2"
+OUTPUT_FILE="$3"
 
 echo "Loading data from: $DATA_DIR"
 echo "Output will be saved to: $OUTPUT_FILE"
 
-CONFIG="configs/config_HGCal_photons.json"
-CHECKPOINT="checkpoints/checkpoint_HGCal_photons.pth"
+CONFIG="CaloDiffusion/configs/config_HGCal_photons.json"
+CHECKPOINT="CaloDiffusion/checkpoints/checkpoint_HGCal_photons.pth"
 
-RUN_COMMAND="python3 CaloDiffusion/calodiffusion/inference.py --config $CONFIG --data-folder $DATA_DIR --hgcal sample -g $OUTPUT_FILE --model-loc $CHECKPOINT"
+RUN_COMMAND="python3 CaloDiffusion/calodiffusion/inference.py --batch-size $BATCHES --config $CONFIG --data-folder $DATA_DIR --hgcal sample -g $OUTPUT_FILE --model-loc $CHECKPOINT"
 
 apptainer exec calodif-test.sif pip3 install -e CaloDiffusion/
 apptainer exec calodif-test.sif $RUN_COMMAND
 
 ```
+The batch size argument is required (it is needed to run compute tests). 
 
 The input and output paths are optional to include as cli args but they must be accessable (e.g. not hardcoded in the codebase itself). 
 
-Please provide instructions in a README.md if anything beyond just running the script is required. 
+Please provide instructions in a README.md if anything beyond just running the script is required.  
