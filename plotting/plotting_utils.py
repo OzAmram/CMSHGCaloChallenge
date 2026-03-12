@@ -26,13 +26,15 @@ def make_hist(
     leg_font=16,
 ):
 
-    if binning is None:
+    if binning is None: # default: 50 bins between min and max of reference, we have internal discussion and decided to go with reference binning only, so that the binning is fixed for all participants! 
         lower_bound = np.quantile(reference, 0.0) - 1e-8
         upper_bound = np.quantile(reference, 1.0) + 1e-8
         if "occupancy" in xlabel.lower():
             # avoid binning effects for discrete features
-            delta = np.ceil((upper_bound - lower_bound) / 50)
-            binning = np.arange(lower_bound, upper_bound + 1.0, delta)
+            delta = max(np.ceil((upper_bound - lower_bound) / 50), 1.0)
+            binning = np.arange(lower_bound, upper_bound + delta, delta)
+            if len(binning) < 2:
+                binning = np.linspace(lower_bound, lower_bound + delta, 3)
         else:
             binning = np.linspace(lower_bound, upper_bound, 50)
 
@@ -178,3 +180,89 @@ def make_hist(
         )
     plt.close(fig)
     return sep_power
+
+
+def make_profile(
+    ref_profiles,
+    gen_profiles,
+    xlabel="Layer",
+    ylabel="Energy fraction",
+    model_name="Model",
+    fname="",
+    leg_font=16,
+    logy=False,
+):
+    """Plot average profile (longitudinal or transverse).
+
+    Upper panel: mean line with two layers of uncertainty:
+      - light shaded band: ±1 std (shower-to-shower spread)
+      - darker shaded band: ±1 SEM (statistical uncertainty on the mean)
+    Lower panel: ratio with ±1 SEM error band.
+
+    ref_profiles, gen_profiles: arrays of shape (nShowers, nBins) where each
+    column is a layer or ring feature value.
+    """
+    n_bins = ref_profiles.shape[1]
+    x = np.arange(n_bins)
+
+    n_ref = ref_profiles.shape[0]
+    n_gen = gen_profiles.shape[0]
+
+    ref_mean = np.mean(ref_profiles, axis=0)
+    ref_std = np.std(ref_profiles, axis=0)
+    ref_sem = ref_std / np.sqrt(n_ref)
+    gen_mean = np.mean(gen_profiles, axis=0)
+    gen_std = np.std(gen_profiles, axis=0)
+    gen_sem = gen_std / np.sqrt(n_gen)
+
+    fig, ax = plt.subplots(
+        2, 1, figsize=(6, 4.5),
+        gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
+        sharex=True,
+    )
+
+    # Reference (Geant4) — std band (light) + SEM band (darker)
+    ax[0].step(x, ref_mean, where="mid", color="k", linewidth=1.0, alpha=0.8, label="Geant4")
+    ax[0].fill_between(x, ref_mean - ref_std, ref_mean + ref_std, alpha=0.1, color="k", step="mid")
+    ax[0].fill_between(x, ref_mean - ref_sem, ref_mean + ref_sem, alpha=0.3, color="k", step="mid")
+
+    # Generated — std band (light) + SEM band (darker)
+    ax[0].step(x, gen_mean, where="mid", color=colors[0], linewidth=1.0, alpha=1.0, label=model_name)
+    ax[0].fill_between(x, gen_mean - gen_std, gen_mean + gen_std, alpha=0.1, color=colors[0], step="mid")
+    ax[0].fill_between(x, gen_mean - gen_sem, gen_mean + gen_sem, alpha=0.3, color=colors[0], step="mid")
+
+    # Ratio panel — SEM error bands
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.where(ref_mean > 0, gen_mean / ref_mean, 1.0)
+        ratio_err = np.where(ref_mean > 0, gen_sem / ref_mean, 0.0)
+        ref_ratio_err = np.where(ref_mean > 0, ref_sem / ref_mean, 0.0)
+
+    ax[1].fill_between(x, 1 - ref_ratio_err, 1 + ref_ratio_err, alpha=0.2, color="k", step="mid")
+    ax[1].step(x, ratio, where="mid", color=colors[0], linewidth=1.0)
+    ax[1].fill_between(x, ratio - ratio_err, ratio + ratio_err, alpha=0.2, color=colors[0], step="mid")
+    ax[1].axhline(1.0, color="k", linewidth=1.0, alpha=0.8)
+    ax[1].axhline(0.7, c="k", ls="--", lw=0.5)
+    ax[1].axhline(1.3, c="k", ls="--", lw=0.5)
+    ax[1].set_yticks((0.7, 1.0, 1.3))
+    ax[1].set_ylim(0.5, 1.5)
+
+    if logy:
+        ax[0].set_yscale("log")
+    else:
+        ax[0].set_ylim(0.0, None)
+    ax[0].set_ylabel(ylabel, fontsize=leg_font)
+    ax[1].set_xlabel(xlabel, fontsize=leg_font)
+    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
+    ax[0].legend(loc="best", frameon=False, fontsize=leg_font)
+    fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
+
+    if len(fname) > 0:
+        fig.savefig(fname + ".png")
+        fig.savefig(fname + ".pdf", dpi=300, format="pdf")
+        np.savez(
+            fname + ".npz",
+            ref_mean=ref_mean, ref_std=ref_std, ref_sem=ref_sem,
+            gen_mean=gen_mean, gen_std=gen_std, gen_sem=gen_sem,
+        )
+    plt.close(fig)
+    return fig
