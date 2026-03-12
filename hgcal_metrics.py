@@ -421,7 +421,7 @@ def compute_metrics(flags):
     f_geant_list = utils.get_files(dataset_config['EVAL'], folder=flags.data_folder)
     for f_sample in f_geant_list:
         try:
-            feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts)
+            feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess, EMin_rescale=flags.EMin_rescale)
         except (OSError, KeyError, ValueError):
             print("Bad Geant file, skipping")
             continue
@@ -439,9 +439,22 @@ def compute_metrics(flags):
     if(feats_geant is None):
         raise RuntimeError("No valid Geant files were loaded from EVAL list.")
 
+    # sanity checks on the calculated features
+    inf_gen = np.isinf(feats_gen)
+    nan_gen = np.isnan(feats_gen)
+    inf_geant = np.isinf(feats_geant)
+    nan_geant = np.isnan(feats_geant)
+    print(f"Number of Infs: Geant4 {np.sum(inf_geant)}, Model {np.sum(inf_gen)}")
+    print(f"Number of Nans: Geant4 {np.sum(nan_geant)}, Model {np.sum(nan_gen)}")
 
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
+
+    if(flags.single_energy):
+        # remove incident energy feature
+        feats_geant = feats_geant[:, 1:]
+        feats_gen = feats_gen[:, 1:]
+        feat_names = feat_names[1:]
 
     if(flags.no_occupancy):
         #don't include occupancy feature
@@ -699,6 +712,7 @@ if(__name__ == "__main__"):
     parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory')
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
+    parser.add_argument('--single_energy', action='store_true', default=False,help='Flag for the evaluation at fixed incident energy')
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
     parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
