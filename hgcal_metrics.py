@@ -200,7 +200,8 @@ class DNN(torch.nn.Module):
 
 def get_feat_names(nLayers):
     feat_names = ['Incident Energy', 'Energy Ratio']
-    for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
+    # removed: redundant with longitudinal profile (fraction or absolute via --use_absolute)
+    #for i in range(nLayers): feat_names.append("Log Energy Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Center Layer %i" % i)
     for i in range(nLayers): feat_names.append("X Width Layer %i" % i)
     for i in range(nLayers): feat_names.append("Y Center Layer %i" % i)
@@ -231,9 +232,9 @@ def compute_feats(showers, incident_E, geom):
     eps = 1e-8
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_ratio = E_total / incident_E
-    E_layer = np.sum(showers, axis=(2))
-    E_per_layer = np.log10(E_layer + eps)
-
+    # removed: redundant with longitudinal profile (fraction or absolute via --use_absolute)
+    #E_layer = np.sum(showers, axis=(2))
+    #E_per_layer = np.log10(E_layer + eps)
     x_vals = geom.xmap[:, :geom.max_ncell]
     E_x_center = utils.WeightedMean(x_vals, showers, axis=(2))
     E_x2_center = utils.WeightedMean(x_vals, showers, power=2, axis=(2))
@@ -251,7 +252,7 @@ def compute_feats(showers, incident_E, geom):
         [
             incident_E,
             E_ratio,
-            E_per_layer,
+            #E_per_layer,  # removed: redundant with profiles
             E_x_center,
             E_x_width,
             E_y_center,
@@ -359,7 +360,7 @@ def compute_metrics(flags):
         return generated,energies
 
     def LoadSample(fname, EMin = -1.0, nevts = -1, reprocess=False, EMin_rescale=False):
-        suffix = ".feat.v3"
+        suffix = ".feat.v4"  # v4: removed per-layer log energy from feats (redundant with profiles)
         if layer_weights is not None:
             suffix += ".%s" % flags.layer_weights_key
         feat_basename = os.path.basename(fname) + suffix + ".npz"
@@ -518,14 +519,32 @@ def compute_metrics(flags):
             sep_power_sums['all'] += sep_power
             sep_power_counts['all'] += 1
 
+        # Convert fraction profiles to absolute energy if requested
+        if flags.use_absolute:
+            E_total_geant = (feats_geant[:, 0] * feats_geant[:, 1]).reshape(-1, 1)
+            E_total_gen = (feats_gen[:, 0] * feats_gen[:, 1]).reshape(-1, 1)
+            plot_long_geant = long_geant * E_total_geant
+            plot_long_gen = long_gen * E_total_gen
+            plot_trans_geant = trans_geant * E_total_geant
+            plot_trans_gen = trans_gen * E_total_gen
+            profile_label = "Energy"
+            profile_ylabel = "Energy [MeV]"
+        else:
+            plot_long_geant = long_geant
+            plot_long_gen = long_gen
+            plot_trans_geant = trans_geant
+            plot_trans_gen = trans_gen
+            profile_label = "Energy fraction"
+            profile_ylabel = "Energy fraction"
+
         # Per-layer longitudinal profile histograms
         for i in range(nLayers):
-            feat_name = "Energy fraction layer %i" % i
+            feat_name = "%s layer %i" % (profile_label, i)
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                sep_power = make_hist(long_geant[:,i], long_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
+                sep_power = make_hist(plot_long_geant[:,i], plot_long_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
             sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
             sep_power_sums["LongitudinalProfile"] += sep_power
             sep_power_counts["LongitudinalProfile"] += 1
@@ -534,12 +553,12 @@ def compute_metrics(flags):
 
         # Per-ring transverse profile histograms
         for i in range(nRings):
-            feat_name = "Energy fraction ring %i" % i
+            feat_name = "%s ring %i" % (profile_label, i)
             if flags.plot:
                 fname = os.path.join(flags.plot_folder, feat_name.replace(" ", ""))
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                sep_power = make_hist(trans_geant[:,i], trans_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
+                sep_power = make_hist(plot_trans_geant[:,i], plot_trans_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
             sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
             sep_power_sums["TransverseProfile"] += sep_power
             sep_power_counts["TransverseProfile"] += 1
@@ -569,14 +588,14 @@ def compute_metrics(flags):
         # Summary profile plots (average ± std across showers)
         if flags.plot:
             make_profile(
-                long_geant, long_gen,
-                xlabel="Layer", ylabel="Energy fraction",
+                plot_long_geant, plot_long_gen,
+                xlabel="Layer", ylabel=profile_ylabel,
                 model_name=flags.name,
                 fname=os.path.join(flags.plot_folder, "LongitudinalProfile"),
             )
             make_profile(
-                trans_geant, trans_gen,
-                xlabel="Ring", ylabel="Energy fraction",
+                plot_trans_geant, plot_trans_gen,
+                xlabel="Ring", ylabel=profile_ylabel,
                 model_name=flags.name,
                 fname=os.path.join(flags.plot_folder, "TransverseProfile"),
             )
@@ -683,12 +702,16 @@ if(__name__ == "__main__"):
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
     parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
-    parser.add_argument('--apply_layer_weights', action='store_true', default=False,
-                        help='Apply per-layer weights loaded from JSON before feature extraction (default key: weightsPerLayer_V16)')
+    parser.add_argument('--apply_layer_weights', action='store_true', default=True,
+                        help='Apply per-layer weights loaded from JSON before feature extraction (default key: weightsPerLayer_V16). On by default.')
+    parser.add_argument('--no_layer_weights', action='store_false', dest='apply_layer_weights',
+                        help='Disable per-layer weights (use legacy uniform x1000 scaling)')
     parser.add_argument('--layer_weights_file', default='HGCalRecHit_layer_weights.json',
                         help='JSON file with HGCal layer weights')
     parser.add_argument('--layer_weights_key', default='weightsPerLayer_V16',
                         help='Key to read from --layer_weights_file (default: weightsPerLayer_V16)')
+    parser.add_argument('--use_absolute', action='store_true', default=False,
+                        help='Plot per-layer/ring absolute energy instead of energy fraction')
 
     flags = parser.parse_args()
     print("EMin_rescale", flags.EMin_rescale)
