@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import utils
+from plotting.plotting_utils import set_cms_style, cms_label, CMS_COLORS
 
 
 def dup(arr):
@@ -100,7 +101,7 @@ def load_histogram_npz(npz_file):
 
 
 def make_summary_plots(input_files_arg, output_dir):
-    utils.SetStyle()
+    set_cms_style()
     os.makedirs(output_dir, exist_ok=True)
 
     model_sources = parse_named_inputs(input_files_arg)
@@ -123,7 +124,11 @@ def make_summary_plots(input_files_arg, output_dir):
     if len(common_features) == 0:
         raise ValueError("No common feature names found across --input_files inputs.")
 
-    colors = plt.cm.tab20(np.linspace(0, 1, max(3, len(model_feature_files))))
+    n_models = len(model_feature_files)
+    if n_models <= len(CMS_COLORS):
+        colors = CMS_COLORS[:n_models]
+    else:
+        colors = plt.cm.tab20(np.linspace(0, 1, n_models))
 
     for feature_name in common_features:
         loaded = []
@@ -250,6 +255,7 @@ def make_summary_plots(input_files_arg, output_dir):
         ax[1].set_xlabel(feature_name)
         ax[1].set_ylabel("Model / Geant4")
         ax[0].legend(loc="best", frameon=False, fontsize=13)
+        cms_label(ax[0])
 
         ratio_min = min(ratio_min, 0.9)
         ratio_max = max(ratio_max, 1.1)

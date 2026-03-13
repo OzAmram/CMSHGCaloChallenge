@@ -70,34 +70,8 @@ def _separation_power(hist1, hist2, bins):
     return 0.5 * ret.sum()
 
 def SetStyle():
-    from matplotlib import rc
-
-    rc("text", usetex=True)
-
-    import matplotlib as mpl
-
-    rc("font", family="serif")
-    rc("font", size=22)
-    rc("xtick", labelsize=15)
-    rc("ytick", labelsize=15)
-    rc("legend", fontsize=24)
-
-    mpl.rcParams.update({"font.size": 26})
-    mpl.rcParams["text.usetex"] = False
-    mpl.rcParams.update({"xtick.major.size": 8})
-    mpl.rcParams.update({"xtick.major.width": 1.5})
-    mpl.rcParams.update({"xtick.minor.size": 4})
-    mpl.rcParams.update({"xtick.minor.width": 0.8})
-    mpl.rcParams.update({"ytick.major.size": 8})
-    mpl.rcParams.update({"ytick.major.width": 1.5})
-    mpl.rcParams.update({"ytick.minor.size": 4})
-    mpl.rcParams.update({"ytick.minor.width": 0.8})
-
-    mpl.rcParams.update({"xtick.labelsize": 18})
-    mpl.rcParams.update({"ytick.labelsize": 18})
-    mpl.rcParams.update({"axes.labelsize": 26})
-    mpl.rcParams.update({"legend.frameon": False})
-    mpl.rcParams.update({"lines.linewidth": 4})
+    from plotting.plotting_utils import set_cms_style
+    set_cms_style()
 
 def LoadJson(file_name):
     import yaml
