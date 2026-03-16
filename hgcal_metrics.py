@@ -336,15 +336,6 @@ def compute_metrics(flags):
         generated = np.reshape(generated,shape_plot)
         if(EMin > 0.): # apply min energy cut on the unreweighted showers, mimicking the fact that we are cutting off the noise and then correct the layers' relative importance a la the weights!
             mask = generated < EMin
-        if layer_weights is not None:
-            # Apply proper per-layer sampling fraction weights
-            generated *= layer_weights.reshape((1, -1, 1))
-        elif hgcal:
-            # Legacy: uniform x1000 as crude sampling fraction approximation
-            generated *= 1000.
-        
-            
-            #Preserve layer energies after applying threshold
             if(EMin_rescale):
                 generated[generated < 0] = 0 
                 d_masked = np.where(mask, generated, 0.)
@@ -354,8 +345,14 @@ def compute_metrics(flags):
                 rescale = (ELayer + eps)/(ELayer - lostE +eps)
                 rescale[ELayer < EMin] = 0.
                 generated *= rescale
-
             generated[mask] = 0.
+
+        if layer_weights is not None:
+            # Apply proper per-layer sampling fraction weights
+            generated *= layer_weights.reshape((1, -1, 1))
+        elif hgcal:
+            # Legacy: uniform x1000 as crude sampling fraction approximation
+            generated *= 1000.
 
 
         return generated,energies
