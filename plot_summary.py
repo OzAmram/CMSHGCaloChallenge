@@ -15,7 +15,7 @@ from plotting.plotting_utils import CMS_COLORS, add_experiment_label, apply_plot
 
 SUMMARY_STYLE_PRESETS = {
     "paper": {
-        "figsize": (8.4, 5.8),
+        "figsize": (8.0, 8.0),
         "height_ratios": (3.5, 1.0),
         "reference_color": "#202020",
         "reference_band_color": "#7f7f7f",
@@ -35,7 +35,7 @@ SUMMARY_STYLE_PRESETS = {
         "ratio_guard_high": 1.03,
     },
     "diagnostic": {
-        "figsize": (8.4, 6.2),
+        "figsize": (8.0, 8.0),
         "height_ratios": (3.2, 1.15),
         "reference_color": "#202020",
         "reference_band_color": "#7f7f7f",
@@ -70,7 +70,7 @@ class SummaryPlotConfig(object):
         models,
         output_dir="plots/summary/",
         feature_labels=None,
-        cms_qualifier="Simulation",
+        cms_qualifier="Preliminary",
         style=None,
     ):
         self.models = models
@@ -84,7 +84,7 @@ class SummaryStyleConfig(object):
     def __init__(
         self,
         preset="paper",
-        figsize=(8.4, 5.8),
+        figsize=(8.0, 8.0),
         height_ratios=(3.5, 1.0),
         reference_color="#202020",
         reference_band_color="#7f7f7f",
@@ -328,7 +328,7 @@ def load_summary_plot_config(config_path):
         raise ValueError("`output_dir` must be a non-empty string if provided.")
     output_dir = _resolve_relative_path(config_dir, output_dir)
 
-    cms_qualifier = str(payload.get("cms_qualifier", "Simulation")).strip() or "Simulation"
+    cms_qualifier = str(payload.get("cms_qualifier", "Preliminary")).strip() or "Preliminary"
     feature_labels = _normalize_feature_labels(payload.get("feature_labels"))
     style = load_summary_style_config(payload.get("style"))
     return SummaryPlotConfig(
@@ -363,7 +363,7 @@ def build_summary_plot_config(input_files_arg=None, config_path=None, output_dir
         models=parse_named_inputs(input_files_arg),
         output_dir=output_dir or "plots/summary/",
         feature_labels={},
-        cms_qualifier="Simulation",
+        cms_qualifier="Preliminary",
         style=SummaryStyleConfig(),
     )
 
@@ -375,13 +375,13 @@ def resolve_summary_npz_files(path_spec):
         return sorted(
             os.path.join(path_spec, fname)
             for fname in os.listdir(path_spec)
-            if fname.endswith(".npz") and not fname.endswith(".feat.npz")
+            if fname.endswith(".npz") and ".feat." not in fname
         )
 
     if (
         os.path.isfile(path_spec)
         and path_spec.endswith(".npz")
-        and not path_spec.endswith(".feat.npz")
+        and ".feat." not in os.path.basename(path_spec)
     ):
         return [path_spec]
 
@@ -399,7 +399,7 @@ def resolve_summary_npz_files(path_spec):
                         fpath = rel_path
                 if (
                     fpath.endswith(".npz")
-                    and not fpath.endswith(".feat.npz")
+                    and ".feat." not in os.path.basename(fpath)
                     and os.path.isfile(fpath)
                 ):
                     npz_files.append(fpath)
@@ -409,7 +409,7 @@ def resolve_summary_npz_files(path_spec):
     return [
         fpath
         for fpath in glob_matches
-        if fpath.endswith(".npz") and not fpath.endswith(".feat.npz")
+        if fpath.endswith(".npz") and ".feat." not in os.path.basename(fpath)
     ]
 
 
@@ -418,10 +418,7 @@ def load_histogram_npz(npz_file):
         required = {"dist_ref", "dist_ref_err", "dist_gen", "dist_gen_err", "binning"}
         missing = required - set(data.keys())
         if len(missing) > 0:
-            raise KeyError(
-                f"Missing keys {sorted(missing)} in {npz_file}. "
-                "Expected output from plotting.plotting_utils.make_hist."
-            )
+            return None
         return {
             "dist_ref": np.asarray(data["dist_ref"], dtype=np.float64),
             "dist_ref_err": np.asarray(data["dist_ref_err"], dtype=np.float64),
@@ -521,6 +518,12 @@ def make_summary_plots(summary_config):
             model_name = model_spec.name
             npz_file = model_feature_files[model_name][feature_name]
             payload = load_histogram_npz(npz_file)
+            if payload is None:
+                print(
+                    f"Skipping {feature_name}: not a histogram npz ({npz_file})"
+                )
+                skip_feature = True
+                break
             if binning_ref is None:
                 binning_ref = payload["binning"]
                 geant_ref = payload["dist_ref"]
@@ -539,7 +542,7 @@ def make_summary_plots(summary_config):
                 )
                 skip_feature = True
                 break
-            elif not np.allclose(payload["dist_ref_err"], geant_ref_err, rtol=1e-8, atol=1e-12):
+            elif not np.allclose(payload["dist_ref_err"], geant_ref_err, rtol=1e-8, atol=1e-12, equal_nan=True):
                 print(
                     f"Skipping {feature_name}: incompatible Geant4 reference errors for "
                     f"model {model_name} ({npz_file})"
