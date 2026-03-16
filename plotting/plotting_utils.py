@@ -35,7 +35,7 @@ def apply_plot_style():
     })
 
 
-def add_experiment_label(ax, label=""):
+def add_experiment_label(ax, label="Preliminary"):
     """Add the CMS experiment label using mplhep."""
     local_hep = _require_mplhep()
     local_hep.cms.label(ax=ax, label=label, data=False, rlabel="Phase-II")
@@ -73,7 +73,7 @@ def make_hist(
     fig, ax = plt.subplots(
         2,
         1,
-        figsize=(6, 6),
+        figsize=(20, 20),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )
@@ -250,7 +250,7 @@ def make_profile(
     gen_sem = gen_std / np.sqrt(n_gen)
 
     fig, ax = plt.subplots(
-        2, 1, figsize=(6, 6),
+        2, 1, figsize=(20, 20),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )
