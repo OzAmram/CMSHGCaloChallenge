@@ -73,7 +73,7 @@ def make_hist(
     fig, ax = plt.subplots(
         2,
         1,
-        figsize=(5, 4.5),
+        figsize=(6.8, 5.6),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )
@@ -250,7 +250,7 @@ def make_profile(
     gen_sem = gen_std / np.sqrt(n_gen)
 
     fig, ax = plt.subplots(
-        2, 1, figsize=(6, 4.5),
+        2, 1, figsize=(7.4, 5.6),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )

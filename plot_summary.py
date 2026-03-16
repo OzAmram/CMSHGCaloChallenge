@@ -15,7 +15,7 @@ from plotting.plotting_utils import CMS_COLORS, add_experiment_label, apply_plot
 
 SUMMARY_STYLE_PRESETS = {
     "paper": {
-        "figsize": (7.2, 5.0),
+        "figsize": (8.4, 5.8),
         "height_ratios": (3.5, 1.0),
         "reference_color": "#202020",
         "reference_band_color": "#7f7f7f",
@@ -35,7 +35,7 @@ SUMMARY_STYLE_PRESETS = {
         "ratio_guard_high": 1.03,
     },
     "diagnostic": {
-        "figsize": (7.2, 5.4),
+        "figsize": (8.4, 6.2),
         "height_ratios": (3.2, 1.15),
         "reference_color": "#202020",
         "reference_band_color": "#7f7f7f",
@@ -84,7 +84,7 @@ class SummaryStyleConfig(object):
     def __init__(
         self,
         preset="paper",
-        figsize=(7.2, 5.0),
+        figsize=(8.4, 5.8),
         height_ratios=(3.5, 1.0),
         reference_color="#202020",
         reference_band_color="#7f7f7f",
