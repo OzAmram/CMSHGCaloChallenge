@@ -673,12 +673,12 @@ def make_summary_plots(summary_config):
         )
         ax[0].set_xlim(binning_ref[0], binning_ref[-1])
         ax[0].set_ylim(0.0, None)
-        ax[0].set_ylabel("a.u.", fontsize=style.label_fontsize)
+        ax[0].set_ylabel("a.u.", fontsize=style.label_fontsize, loc="center")
         ax[1].set_xlabel(
             get_feature_label(feature_name, summary_config.feature_labels),
             fontsize=style.label_fontsize,
         )
-        ax[1].set_ylabel("Ratio to Geant4", fontsize=max(style.label_fontsize - 1.0, 1.0))
+        ax[1].set_ylabel("Ratio to Geant4", fontsize=max(style.label_fontsize - 1.0, 1.0), loc="center")
         ax[0].legend(
             loc=style.legend_loc,
             ncol=style.legend_ncol or _legend_columns(len(loaded) + 1),

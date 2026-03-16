@@ -1,8 +1,24 @@
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import re
 
 import utils
+
+def default_feature_label(feature_name):
+    label = feature_name.replace("_", " ")
+    label = label.replace("Energyfraction", "Energy fraction ")
+    label = label.replace("LongitudinalProfile", "Longitudinal Profile")
+    label = label.replace("TransverseProfile", "Transverse Profile")
+    label = label.replace("IncidentE", "Incident E")
+    label = label.replace("ERatio", "E Ratio")
+    label = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", label)
+    label = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
+    label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
+    label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
+    return re.sub(r"\s+", " ", label).strip()
+
+
 
 try:
     import mplhep as hep
@@ -32,6 +48,7 @@ def apply_plot_style():
         "axes.prop_cycle": mpl.cycler(color=CMS_COLORS),
         "legend.frameon": False,
         "legend.handletextpad": 0.8,
+        "yaxis.labellocation": "center",
     })
 
 
@@ -70,10 +87,12 @@ def make_hist(
         else:
             binning = np.linspace(lower_bound, upper_bound, 50)
 
+    xlabel = default_feature_label(xlabel)
+
     fig, ax = plt.subplots(
         2,
         1,
-        figsize=(20, 20),
+        figsize=(8, 8),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )
@@ -182,9 +201,9 @@ def make_hist(
         ax[0].set_ylim(0.0, None)
     ax[1].axhline(0.7, c="k", ls="--", lw=0.5)
     ax[1].axhline(1.3, c="k", ls="--", lw=0.5)
-    ax[0].set_ylabel(ylabel, fontsize=leg_font)
+    ax[0].set_ylabel(ylabel, fontsize=leg_font, loc="center")
     ax[1].set_xlabel(xlabel, fontsize=leg_font)
-    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
+    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font, loc="center")
     ax[0].legend(
         loc=label_loc,
         frameon=False,
@@ -249,8 +268,10 @@ def make_profile(
     gen_std = np.std(gen_profiles, axis=0)
     gen_sem = gen_std / np.sqrt(n_gen)
 
+    xlabel = default_feature_label(xlabel)
+
     fig, ax = plt.subplots(
-        2, 1, figsize=(20, 20),
+        2, 1, figsize=(8, 8),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )
@@ -284,9 +305,9 @@ def make_profile(
         ax[0].set_yscale("log")
     else:
         ax[0].set_ylim(0.0, None)
-    ax[0].set_ylabel(ylabel, fontsize=leg_font)
+    ax[0].set_ylabel(ylabel, fontsize=leg_font, loc="center")
     ax[1].set_xlabel(xlabel, fontsize=leg_font)
-    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
+    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font, loc="center")
     ax[0].legend(loc="best", frameon=False, fontsize=leg_font)
     add_experiment_label(ax[0])
     fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
