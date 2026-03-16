@@ -4,52 +4,41 @@ import matplotlib.pyplot as plt
 
 import utils
 
+try:
+    import mplhep as hep
+except ImportError:
+    hep = None
+
 # CMS CVD-friendly color palette (Petroff, adopted by CMS 2024)
 CMS_COLORS = ["#5790fc", "#f89c20", "#e42536", "#964a8b", "#9c9ca1", "#7a21dd"]
 colors = [CMS_COLORS[0]]
 
 
-def set_cms_style():
-    """Apply CMS plotting style with CVD-friendly Petroff palette."""
+def _require_mplhep():
+    if hep is None:
+        raise ModuleNotFoundError(
+            "mplhep is required for plotting. Install `mplhep` in the environment "
+            "used to generate evaluation plots."
+        )
+    return hep
+
+
+def apply_plot_style():
+    """Apply mplhep CMS style plus the repo color cycle."""
+    local_hep = _require_mplhep()
+    plt.style.use(local_hep.style.CMS)
     mpl.rcParams.update({
-        # Font
-        "font.sans-serif": ["TeX Gyre Heros", "Helvetica", "Arial"],
-        "font.family": "sans-serif",
-        "font.size": 14,
-        # Axes
-        "axes.labelsize": 16,
-        "axes.linewidth": 1.5,
+        "axes.labelpad": 5,
         "axes.prop_cycle": mpl.cycler(color=CMS_COLORS),
-        # Ticks — inward, visible on all sides
-        "xtick.direction": "in",
-        "ytick.direction": "in",
-        "xtick.major.size": 8,
-        "xtick.minor.size": 4,
-        "ytick.major.size": 8,
-        "ytick.minor.size": 4,
-        "xtick.top": True,
-        "ytick.right": True,
-        "xtick.minor.visible": True,
-        "ytick.minor.visible": True,
-        "xtick.labelsize": 13,
-        "ytick.labelsize": 13,
-        # Legend
         "legend.frameon": False,
-        "legend.fontsize": 13,
-        "legend.handlelength": 1.5,
-        "legend.borderpad": 0.5,
+        "legend.handletextpad": 0.8,
     })
 
 
-def cms_label(ax, label="Simulation", loc="left"):
-    """Add a CMS-style label (bold 'CMS' + italic qualifier) to the axes."""
-    ax.text(0.0, 1.01, r"$\mathbf{CMS}$", fontsize=16,
-            fontstyle="normal", transform=ax.transAxes, ha="left", va="bottom")
-    ax.text(0.095, 1.01, r"$\it{%s}$" % label, fontsize=13,
-            transform=ax.transAxes, ha="left", va="bottom")
-
-
-set_cms_style()
+def add_experiment_label(ax, label="Simulation"):
+    """Add the CMS experiment label using mplhep."""
+    local_hep = _require_mplhep()
+    local_hep.cms.label(ax=ax, label=label, data=False)
 
 
 def dup(a):
@@ -67,6 +56,7 @@ def make_hist(
     fname="",
     leg_font=16,
 ):
+    apply_plot_style()
 
     if binning is None: # default: 50 bins between min and max of reference, we have internal discussion and decided to go with reference binning only, so that the binning is fixed for all participants! 
         lower_bound = np.quantile(reference, 0.0) - 1e-8
@@ -202,7 +192,7 @@ def make_hist(
         title_fontsize=leg_font,
         fontsize=leg_font,
     )
-    cms_label(ax[0])
+    add_experiment_label(ax[0])
     fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
     sep_power = utils._separation_power(
         dist_ref_normalized, dist_gen_normalized, binning
@@ -245,6 +235,7 @@ def make_profile(
     ref_profiles, gen_profiles: arrays of shape (nShowers, nBins) where each
     column is a layer or ring feature value.
     """
+    apply_plot_style()
     n_bins = ref_profiles.shape[1]
     x = np.arange(n_bins)
 
@@ -297,7 +288,7 @@ def make_profile(
     ax[1].set_xlabel(xlabel, fontsize=leg_font)
     ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
     ax[0].legend(loc="best", frameon=False, fontsize=leg_font)
-    cms_label(ax[0])
+    add_experiment_label(ax[0])
     fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
 
     if len(fname) > 0:

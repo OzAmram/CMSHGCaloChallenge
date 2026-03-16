@@ -35,6 +35,17 @@ An example usage would be:
 python hgcal_metrics.py -c config_HGCal_pions.json -g datasets/HGCal_central_2024_pions_eval_test.txt -p plots/eval_test/ -d  /uscms_data/d3/oamram/HGCal/HGCal_central_2024_pions/ --mode all --plot --name MyModel
 ```
 
+To overlay histogram summaries from multiple model runs after those per-feature `.npz`
+files have been produced, use:
+```
+python plot_summary.py --config summary_plot_config.example.json
+```
+The summary config ties together each model name, the path containing its histogram
+`.npz` files, and an optional plotting color. It also accepts a `style` block for
+presentation tuning. The default `paper` preset is line-first and intentionally
+less cluttered; `diagnostic` keeps the model uncertainty bands visible.
+The example file can be copied and edited for a real comparison setup.
+
 When using a non-zero EMin value, some voxels will get their energy set to zero for the evaluation. 
 The code automatically rescales the energy of
 other voxels in the layer to preserve the total layer energy.

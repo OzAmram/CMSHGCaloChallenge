@@ -70,8 +70,12 @@ def _separation_power(hist1, hist2, bins):
     return 0.5 * ret.sum()
 
 def SetStyle():
-    from plotting.plotting_utils import set_cms_style
-    set_cms_style()
+    from plotting.plotting_utils import apply_plot_style
+    try:
+        apply_plot_style()
+    except ModuleNotFoundError:
+        # hgcal_metrics imports this unconditionally even when plots are not requested.
+        pass
 
 def LoadJson(file_name):
     import yaml
