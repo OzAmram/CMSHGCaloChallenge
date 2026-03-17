@@ -68,6 +68,10 @@ If you want to install Singularity on your MacBook, please follow these steps (T
 
 The submission should contain scripts that show how to run the photon and pion generation (if applicable). They must be self contained and do not require the runner to select different model checkpoints or configurations (to reduce the possiblity of the model being run incorrectly). 
 
+
+[!NOTE] Please include the `--nv` flag for the apptainer command, otherwise your model will not use GPU.
+
+
 For example (using CaloDiffusion)
 
 ```bash
@@ -93,7 +97,7 @@ CHECKPOINT="CaloDiffusion/checkpoints/checkpoint_HGCal_photons.pth"
 RUN_COMMAND="python3 CaloDiffusion/calodiffusion/inference.py --batch-size $BATCHES --nvents $N_SAMPLES --config $CONFIG --data-folder $DATA_DIR --hgcal sample -g $OUTPUT_FILE --model-loc $CHECKPOINT"
 
 apptainer exec calodif-test.sif pip3 install -e CaloDiffusion/
-apptainer exec calodif-test.sif $RUN_COMMAND
+apptainer exec --nv calodif-test.sif $RUN_COMMAND
 
 ```
 The batch size and number of samples arguments are required (they are needed to run compute tests). 
