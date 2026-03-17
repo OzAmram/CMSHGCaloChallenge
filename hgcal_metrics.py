@@ -212,7 +212,7 @@ def get_feat_names(nLayers):
 
 
 def compute_profiles(showers, geom, n_rings):
-    """Compute longitudinal and transverse shower profiles (not used as classifier features)."""
+    """Compute longitudinal and transverse shower profiles."""
     eps = 1e-8
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_layer = np.sum(showers, axis=(2))
@@ -613,13 +613,16 @@ def compute_metrics(flags):
             print("Saved profile summary plots")
 
 
+    # Combine scalar features with per-shower profile fractions for classifier/FPD
+    feats_cls_gen = np.concatenate((feats_gen, long_gen, trans_gen), axis=1)
+    feats_cls_geant = np.concatenate((feats_geant, long_geant, trans_geant), axis=1)
 
     if(do_classifier):
-        labels_diffu = np.ones((feats_gen.shape[0], 1), dtype=np.float32)
-        labels_geant = np.zeros((feats_geant.shape[0], 1), dtype=np.float32)
+        labels_diffu = np.ones((feats_cls_gen.shape[0], 1), dtype=np.float32)
+        labels_geant = np.zeros((feats_cls_geant.shape[0], 1), dtype=np.float32)
 
         labels_all = np.concatenate((labels_diffu, labels_geant), axis = 0)
-        feats_all = np.concatenate((feats_gen, feats_geant), axis = 0)
+        feats_all = np.concatenate((feats_cls_gen, feats_cls_geant), axis = 0)
 
         scaler = StandardScaler()
         feats_all = scaler.fit_transform(feats_all)
@@ -673,9 +676,9 @@ def compute_metrics(flags):
                 f.write(cls_string)
 
     if(do_fpd):
-        min_samples = min(feats_geant.shape[0], 20000)
-        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_geant, feats_gen, min_samples = min_samples)
-        kpd_val, kpd_err = jetnet.evaluation.kpd(feats_geant, feats_gen)
+        min_samples = min(feats_cls_geant.shape[0], 20000)
+        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen, min_samples = min_samples)
+        kpd_val, kpd_err = jetnet.evaluation.kpd(feats_cls_geant, feats_cls_gen)
 
         fpd_result_str = (
                 f"FPD: {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f} x 10^-3\n" 
