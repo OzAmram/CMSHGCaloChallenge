@@ -484,7 +484,7 @@ def compute_metrics(flags):
         sep_power_sums = {
             "Energy": 0.,
             "LongitudinalProfile": 0.,
-            "TransverseProfile": 0.,
+            "Transverse": 0.,
             "Center": 0.,
             "Width": 0.,
             "Occupancy": 0.,
@@ -492,8 +492,7 @@ def compute_metrics(flags):
         }
         sep_power_counts = {
             "Energy": 0,
-            "LongitudinalProfile": 0,
-            "TransverseProfile": 0,
+            "Transverse": 0,
             "Center": 0,
             "Width": 0,
             "Occupancy": 0,
@@ -557,8 +556,8 @@ def compute_metrics(flags):
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(plot_long_geant[:,i], plot_long_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
             sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
-            sep_power_sums["LongitudinalProfile"] += sep_power
-            sep_power_counts["LongitudinalProfile"] += 1
+            sep_power_sums["Energy"] += sep_power
+            sep_power_counts["Energy"] += 1
             sep_power_sums['all'] += sep_power
             sep_power_counts['all'] += 1
 
@@ -571,8 +570,8 @@ def compute_metrics(flags):
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(plot_trans_geant[:,i], plot_trans_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
             sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
-            sep_power_sums["TransverseProfile"] += sep_power
-            sep_power_counts["TransverseProfile"] += 1
+            sep_power_sums["Transverse"] += sep_power
+            sep_power_counts["Transverse"] += 1
             sep_power_sums['all'] += sep_power
             sep_power_counts['all'] += 1
 
@@ -608,7 +607,7 @@ def compute_metrics(flags):
                 plot_trans_geant, plot_trans_gen,
                 xlabel="Ring", ylabel=profile_ylabel,
                 model_name=flags.name,
-                fname=os.path.join(flags.plot_folder, "TransverseProfile"),
+                fname=os.path.join(flags.plot_folder, "Transverse"),
             )
             print("Saved profile summary plots")
 
