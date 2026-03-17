@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import warnings
+import random
 
 import h5py
 import jetnet
@@ -12,10 +13,20 @@ from sklearn.calibration import calibration_curve
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
+from scipy.stats import kstest
 
 import utils
 from plotting.plotting_utils import make_hist, make_profile
 
+#set random seed for everything
+def set_seed(seed = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # Essential for reproducibility, but may impact performance
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def _map_weights_to_layers(weights, n_layers, key_name):
     if len(weights) == n_layers + 1:
@@ -450,6 +461,18 @@ def compute_metrics(flags):
         feat_names = [feat_names[idx] for idx in feats_no_occupancy]
 
 
+    #set seed for reproducibility 
+    set_seed(flags.seed)
+
+
+    if(flags.shuffle_labels):
+        #randomly shuffle labels, for diff geant-geant bootstraps
+        feats_all = np.concatenate([feats_geant, feats_gen], axis=0)
+        np.random.shuffle(feats_all)
+        half_idx = feats_all.shape[0]//2
+        feats_geant = feats_all[:half_idx]
+        feats_gen = feats_all[half_idx:]
+
 
     do_hists = do_classifier = do_fpd = False
 
@@ -472,7 +495,7 @@ def compute_metrics(flags):
         sep_power_sums = {
             "Energy": 0.,
             "LongitudinalProfile": 0.,
-            "TransverseProfile": 0.,
+            "TransverseProfile":0.,
             "Center": 0.,
             "Width": 0.,
             "Occupancy": 0.,
@@ -487,6 +510,7 @@ def compute_metrics(flags):
             "Occupancy": 0,
             "all": 0,
         }
+        ks_sums = copy.copy(sep_power_sums)
 
         # Per-feature histograms
         for i, feat_name in enumerate(feat_names):
@@ -495,8 +519,10 @@ def compute_metrics(flags):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_name, model_name=flags.name, fname=fname)
+                test = kstest(feats_geant[:,i], feats_gen[:,i])
+                ks_metric, ks_pval = test.statistic, test.pvalue
 
-            sep_power_result_str += "%i %s: %.3e \n" % (i, feat_name, sep_power)
+            sep_power_result_str += "%i %s: %.3e / %.3e (%.3f) \n" % (i, feat_name, sep_power, ks_metric, ks_pval)
 
             #ignore incident E
             if("Incident" in feat_name): continue
@@ -514,8 +540,11 @@ def compute_metrics(flags):
                 continue
 
             sep_power_sums[sum_key] += sep_power
+            ks_sums[sum_key] += ks_metric
             sep_power_counts[sum_key] += 1
             sep_power_sums['all'] += sep_power
+            sep_power_sums['all'] += sep_power
+            ks_sums['all'] += ks_metric
             sep_power_counts['all'] += 1
 
         # Per-layer longitudinal profile histograms
@@ -526,10 +555,14 @@ def compute_metrics(flags):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(long_geant[:,i], long_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
-            sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
+                ks_metric = kstest(feats_geant[:,i], feats_gen[:,i]).statistic
+
+            sep_power_result_str += "%s: %.3e / %.3e \n" % (feat_name, sep_power, ks_metric)
             sep_power_sums["LongitudinalProfile"] += sep_power
+            ks_sums["LongitudinalProfile"] += ks_metric
             sep_power_counts["LongitudinalProfile"] += 1
             sep_power_sums['all'] += sep_power
+            ks_sums['all'] += ks_metric
             sep_power_counts['all'] += 1
 
         # Per-ring transverse profile histograms
@@ -540,10 +573,14 @@ def compute_metrics(flags):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(trans_geant[:,i], trans_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
-            sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
+                ks_metric = kstest(trans_geant[:,i], trans_gen[:,i]).statistic
+
+            sep_power_result_str += "%s: %.3e / %.3e \n" % (feat_name, sep_power, ks_metric)
             sep_power_sums["TransverseProfile"] += sep_power
+            ks_sums["TransverseProfile"] += ks_metric
             sep_power_counts["TransverseProfile"] += 1
             sep_power_sums['all'] += sep_power
+            ks_sums['all'] += ks_metric
             sep_power_counts['all'] += 1
 
         #detailed breakdown in sep file
@@ -559,7 +596,8 @@ def compute_metrics(flags):
             if norm <= 0:
                 continue
             avg_sep = sep_power_sums[key] / norm
-            sep_power_metrics_str += "Avg separation power of %s features: %.3e \n" % (key, avg_sep)
+            avg_ks = ks_sums[key] / norm
+            sep_power_metrics_str += "Avg separation power / KS of %s features: %.3e / %.3e \n" % (key, avg_sep, avg_ks)
 
         print(sep_power_metrics_str)
 
@@ -585,11 +623,14 @@ def compute_metrics(flags):
 
 
     if(do_classifier):
+
+
         labels_diffu = np.ones((feats_gen.shape[0], 1), dtype=np.float32)
         labels_geant = np.zeros((feats_geant.shape[0], 1), dtype=np.float32)
 
         labels_all = np.concatenate((labels_diffu, labels_geant), axis = 0)
         feats_all = np.concatenate((feats_gen, feats_geant), axis = 0)
+
 
         scaler = StandardScaler()
         feats_all = scaler.fit_transform(feats_all)
@@ -673,11 +714,14 @@ if(__name__ == "__main__"):
     parser.add_argument('--name', default='Model', help='Model name (for plot labels)')
 
     parser.add_argument('--plot', default=False, action='store_true', help='Save 1D feature plots')
+    parser.add_argument('--seed', type=int, default=123, help='Set random seed for classifier')
 
     parser.add_argument('--cls_n_iters', default=1, type=int, help='Num classifiers to train')
     parser.add_argument('--cls_n_epochs', default=50, type=int, help='Num classifier epochs')
     parser.add_argument('--cls_batch_size', default=256, type=int, help='classifier batch size')
-    parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory')
+    parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory for classifier')
+
+    parser.add_argument('--shuffle_labels', default=False, action='store_true', help='Randomly permute labels (for geant-geant bootstraps)')
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
