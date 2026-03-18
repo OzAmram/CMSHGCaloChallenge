@@ -212,7 +212,7 @@ def get_feat_names(nLayers):
 
 
 def compute_profiles(showers, geom, n_rings):
-    """Compute longitudinal and transverse shower profiles (not used as classifier features)."""
+    """Compute longitudinal and transverse shower profiles."""
     eps = 1e-8
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_layer = np.sum(showers, axis=(2))
@@ -484,7 +484,7 @@ def compute_metrics(flags):
         sep_power_sums = {
             "Energy": 0.,
             "LongitudinalProfile": 0.,
-            "TransverseProfile": 0.,
+            "Transverse": 0.,
             "Center": 0.,
             "Width": 0.,
             "Occupancy": 0.,
@@ -492,8 +492,7 @@ def compute_metrics(flags):
         }
         sep_power_counts = {
             "Energy": 0,
-            "LongitudinalProfile": 0,
-            "TransverseProfile": 0,
+            "Transverse": 0,
             "Center": 0,
             "Width": 0,
             "Occupancy": 0,
@@ -557,8 +556,8 @@ def compute_metrics(flags):
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(plot_long_geant[:,i], plot_long_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
             sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
-            sep_power_sums["LongitudinalProfile"] += sep_power
-            sep_power_counts["LongitudinalProfile"] += 1
+            sep_power_sums["Energy"] += sep_power
+            sep_power_counts["Energy"] += 1
             sep_power_sums['all'] += sep_power
             sep_power_counts['all'] += 1
 
@@ -571,8 +570,8 @@ def compute_metrics(flags):
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(plot_trans_geant[:,i], plot_trans_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
             sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
-            sep_power_sums["TransverseProfile"] += sep_power
-            sep_power_counts["TransverseProfile"] += 1
+            sep_power_sums["Transverse"] += sep_power
+            sep_power_counts["Transverse"] += 1
             sep_power_sums['all'] += sep_power
             sep_power_counts['all'] += 1
 
@@ -608,18 +607,21 @@ def compute_metrics(flags):
                 plot_trans_geant, plot_trans_gen,
                 xlabel="Ring", ylabel=profile_ylabel,
                 model_name=flags.name,
-                fname=os.path.join(flags.plot_folder, "TransverseProfile"),
+                fname=os.path.join(flags.plot_folder, "Transverse"),
             )
             print("Saved profile summary plots")
 
 
+    # Combine scalar features with per-shower profile fractions for classifier/FPD
+    feats_cls_gen = np.concatenate((feats_gen, long_gen, trans_gen), axis=1)
+    feats_cls_geant = np.concatenate((feats_geant, long_geant, trans_geant), axis=1)
 
     if(do_classifier):
-        labels_diffu = np.ones((feats_gen.shape[0], 1), dtype=np.float32)
-        labels_geant = np.zeros((feats_geant.shape[0], 1), dtype=np.float32)
+        labels_diffu = np.ones((feats_cls_gen.shape[0], 1), dtype=np.float32)
+        labels_geant = np.zeros((feats_cls_geant.shape[0], 1), dtype=np.float32)
 
         labels_all = np.concatenate((labels_diffu, labels_geant), axis = 0)
-        feats_all = np.concatenate((feats_gen, feats_geant), axis = 0)
+        feats_all = np.concatenate((feats_cls_gen, feats_cls_geant), axis = 0)
 
         scaler = StandardScaler()
         feats_all = scaler.fit_transform(feats_all)
@@ -673,9 +675,9 @@ def compute_metrics(flags):
                 f.write(cls_string)
 
     if(do_fpd):
-        min_samples = min(feats_geant.shape[0], 20000)
-        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_geant, feats_gen, min_samples = min_samples)
-        kpd_val, kpd_err = jetnet.evaluation.kpd(feats_geant, feats_gen)
+        min_samples = min(feats_cls_geant.shape[0], 20000)
+        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen, min_samples = min_samples)
+        kpd_val, kpd_err = jetnet.evaluation.kpd(feats_cls_geant, feats_cls_gen)
 
         fpd_result_str = (
                 f"FPD: {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f} x 10^-3\n" 
