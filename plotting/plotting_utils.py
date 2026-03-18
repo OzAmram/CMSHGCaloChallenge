@@ -1,15 +1,63 @@
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import re
 
 import utils
 
-colors = ["#0000cc"]
-plt.rc("font", **{"size": 16})
+def default_feature_label(feature_name):
+    label = feature_name.replace("_", " ")
+    label = label.replace("Energyfraction", "Energy fraction ")
+    label = label.replace("LongitudinalProfile", "Longitudinal Profile")
+    label = label.replace("TransverseProfile", "Transverse Profile")
+    label = label.replace("IncidentE", "Incident E")
+    label = label.replace("ERatio", "E Ratio")
+    label = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", label)
+    label = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
+    label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
+    label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
+    return re.sub(r"\s+", " ", label).strip()
 
 
-# can add latex font style
-# plt.rc("text.latex", preamble=r"\usepackage{amsmath}")
-# plt.rc("text", usetex=True)
+
+try:
+    import mplhep as hep
+except ImportError:
+    hep = None
+
+# CMS CVD-friendly color palette (Petroff, adopted by CMS 2024)
+CMS_COLORS = ["#5790fc", "#f89c20", "#e42536", "#964a8b", "#9c9ca1", "#7a21dd"]
+colors = [CMS_COLORS[0]]
+
+
+def _require_mplhep():
+    if hep is None:
+        raise ModuleNotFoundError(
+            "mplhep is required for plotting. Install `mplhep` in the environment "
+            "used to generate evaluation plots."
+        )
+    return hep
+
+
+def apply_plot_style():
+    """Apply mplhep CMS style plus the repo color cycle."""
+    local_hep = _require_mplhep()
+    plt.style.use(local_hep.style.CMS)
+    mpl.rcParams.update({
+        "axes.labelpad": 5,
+        "axes.prop_cycle": mpl.cycler(color=CMS_COLORS),
+        "legend.frameon": False,
+        "legend.handletextpad": 0.8,
+        "yaxis.labellocation": "center",
+    })
+
+
+def add_experiment_label(ax, label="Preliminary"):
+    """Add the CMS experiment label using mplhep."""
+    local_hep = _require_mplhep()
+    local_hep.cms.label(ax=ax, text=label, data=False, rlabel="Phase-II")
+
+
 def dup(a):
     return np.append(a, a[-1])
 
@@ -25,6 +73,7 @@ def make_hist(
     fname="",
     leg_font=16,
 ):
+    apply_plot_style()
 
     if binning is None: # default: 50 bins between min and max of reference, we have internal discussion and decided to go with reference binning only, so that the binning is fixed for all participants! 
         lower_bound = np.quantile(reference, 0.0) - 1e-8
@@ -38,10 +87,12 @@ def make_hist(
         else:
             binning = np.linspace(lower_bound, upper_bound, 50)
 
+    xlabel = default_feature_label(xlabel)
+
     fig, ax = plt.subplots(
         2,
         1,
-        figsize=(5, 4.5),
+        figsize=(8, 8),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )
@@ -150,9 +201,9 @@ def make_hist(
         ax[0].set_ylim(0.0, None)
     ax[1].axhline(0.7, c="k", ls="--", lw=0.5)
     ax[1].axhline(1.3, c="k", ls="--", lw=0.5)
-    ax[0].set_ylabel(ylabel, fontsize=leg_font)
+    ax[0].set_ylabel(ylabel, fontsize=leg_font, loc="center")
     ax[1].set_xlabel(xlabel, fontsize=leg_font)
-    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
+    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font, loc="center")
     ax[0].legend(
         loc=label_loc,
         frameon=False,
@@ -160,6 +211,7 @@ def make_hist(
         title_fontsize=leg_font,
         fontsize=leg_font,
     )
+    add_experiment_label(ax[0])
     fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
     sep_power = utils._separation_power(
         dist_ref_normalized, dist_gen_normalized, binning
@@ -202,6 +254,7 @@ def make_profile(
     ref_profiles, gen_profiles: arrays of shape (nShowers, nBins) where each
     column is a layer or ring feature value.
     """
+    apply_plot_style()
     n_bins = ref_profiles.shape[1]
     x = np.arange(n_bins)
 
@@ -215,8 +268,10 @@ def make_profile(
     gen_std = np.std(gen_profiles, axis=0)
     gen_sem = gen_std / np.sqrt(n_gen)
 
+    xlabel = default_feature_label(xlabel)
+
     fig, ax = plt.subplots(
-        2, 1, figsize=(6, 4.5),
+        2, 1, figsize=(8, 8),
         gridspec_kw={"hspace": 0.0, "height_ratios": (3, 1)},
         sharex=True,
     )
@@ -250,10 +305,11 @@ def make_profile(
         ax[0].set_yscale("log")
     else:
         ax[0].set_ylim(0.0, None)
-    ax[0].set_ylabel(ylabel, fontsize=leg_font)
+    ax[0].set_ylabel(ylabel, fontsize=leg_font, loc="center")
     ax[1].set_xlabel(xlabel, fontsize=leg_font)
-    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font)
+    ax[1].set_ylabel(r"$\frac{\text{%s}}{\text{Geant4}}$" % model_name, fontsize=leg_font, loc="center")
     ax[0].legend(loc="best", frameon=False, fontsize=leg_font)
+    add_experiment_label(ax[0])
     fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
 
     if len(fname) > 0:
