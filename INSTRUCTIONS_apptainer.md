@@ -3,7 +3,8 @@
 > TL;DR: 
 > * Create a apptainer image with your runtime depedencies 
 > * Create scripts for running pion and photon generation
-> * Add arguments for batch size and samples used. 
+> * Include a way to generate dummy data for a energy ranges of 5, 50, and 500 GeV. 
+> * Add arguments for batch size, number of samples used, and energy range.  
 
 Your finished submission should be a `.tar.gz` file with the following contents: 
 
@@ -64,6 +65,46 @@ If you want to install Singularity on your MacBook, please follow these steps (T
 8. To install the missing dependencies in the `.sif` file, copy the `.sif` file to the machine where you run the code for your CaloChallenge submissions. Next, run the command `singularity shell --nv image_name.sif` and then install all the missing dependencies. Doing so should include all the dependencies in the `.sif` file.
 9. Finish with step 4 from the top and build the tarball of your submission. 
 
+## Create a dummy data generator
+
+Your submission must be able work without including external conditioning data. 
+Include a dummy data generator in your sampling operation (which should be used in your generation script), which can generate energy range of 5, 50, and 500 GeV. 
+
+For example (using CaloDiffusion)
+
+```python
+def make_fake_data(...):
+    ...
+    class FakeDataset(torchdata.Dataset):
+        """Dataset that generates fake data on-the-fly."""
+        def __init__(self, energy_range:Literal[5, 50, 500], n_events:int, n_layers:int, batch_size:int, cond_size:tuple[int,...]):
+            self.energy_range = energy_range  # REQUIRED
+            self.n_events = n_events  # REQUIRED
+            self.batch_size = batch_size # REQUIRED
+            self.cond_size = cond_size
+            self.n_layers = n_layers
+            
+        def __len__(self):
+            return self.n_events
+            
+        def __getitem__(self, idx):
+            """Generate a single sample."""
+                ...
+            return energy
+    
+    # Create the dataset and DataLoader
+    dataset = FakeDataset(energy_range, n_events, config.get("NLAYERS", 3), batch_size, cond_size)
+    data_loader = torchdata.DataLoader(
+        dataset, 
+        batch_size=batch_size, 
+        shuffle=False,
+        num_workers=0
+    )
+    
+    return data_loader
+
+```
+
 ## Create scripts for photon and pion generation
 
 The submission should contain scripts that show how to run the photon and pion generation (if applicable). They must be self contained and do not require the runner to select different model checkpoints or configurations (to reduce the possiblity of the model being run incorrectly). 
@@ -77,31 +118,30 @@ For example (using CaloDiffusion)
 ```bash
 #/bin/bash
 
-if [ $# -lt 4 ]; then
+if [ $# -lt 3 ]; then
     echo "Error: Missing required arguments" >&2
-    echo "Usage: $0 <batch size> <N Samples> <data directory> <output h5>" >&2
+    echo "Usage: $0 <batch size> <n samples> <energy range>" >&2
     exit 1
 fi
 
 BATCHES="$1"
 N_SAMPLES="$2"
-DATA_DIR="$3"
-OUTPUT_FILE="$4"
+ENERGY="$3"
+OUTPUT_FILE="./test_generation_calodif.h5"  # Not required, we do not use this file for shower evaluation
 
-echo "Loading data from: $DATA_DIR"
+echo "Running with settings: batch size = $BATCHES, samples = $N_SAMPLES, energy range = $ENERGY"
 echo "Output will be saved to: $OUTPUT_FILE"
 
 CONFIG="CaloDiffusion/configs/config_HGCal_photons.json"
 CHECKPOINT="CaloDiffusion/checkpoints/checkpoint_HGCal_photons.pth"
 
-RUN_COMMAND="python3 CaloDiffusion/calodiffusion/inference.py --batch-size $BATCHES --nvents $N_SAMPLES --config $CONFIG --data-folder $DATA_DIR --hgcal sample -g $OUTPUT_FILE --model-loc $CHECKPOINT"
+RUN_COMMAND="python3 CaloDiffusion/calodiffusion/inference.py --batch-size $BATCHES --nvents $N_SAMPLES --energy $ENERGY --config $CONFIG --hgcal sample -g $OUTPUT_FILE --model-loc $CHECKPOINT"
 
 apptainer exec calodif-test.sif pip3 install -e CaloDiffusion/
 apptainer exec --nv calodif-test.sif $RUN_COMMAND
 
 ```
-The batch size and number of samples arguments are required (they are needed to run compute tests). 
-
-The input and output paths are optional to include as cli args but they must be accessable (e.g. not hardcoded in the codebase itself). 
+The batch size, number of samples, and energy range arguments are required (they are needed to run compute tests). 
+The output path is optional to include as cli args but they must be accessable (e.g. not hardcoded in the codebase itself, to prevent permission errors or non-existent paths from preventing generation). 
 
 Please provide instructions in a README.md if anything beyond just running the script is required.  
