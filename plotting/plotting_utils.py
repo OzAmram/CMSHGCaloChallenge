@@ -26,10 +26,9 @@ def make_hist(
     leg_font=16,
 ):
 
-    if binning is None:
-        combined = np.concatenate([reference, generated])
-        lower_bound = np.quantile(combined, 0.0) - 1e-8
-        upper_bound = np.quantile(combined, 1.0) + 1e-8
+    if binning is None: # default: 50 bins between min and max of reference, we have internal discussion and decided to go with reference binning only, so that the binning is fixed for all participants! 
+        lower_bound = np.quantile(reference, 0.0) - 1e-8
+        upper_bound = np.quantile(reference, 1.0) + 1e-8
         if "occupancy" in xlabel.lower():
             # avoid binning effects for discrete features
             delta = max(np.ceil((upper_bound - lower_bound) / 50), 1.0)
