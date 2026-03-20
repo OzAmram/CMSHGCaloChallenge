@@ -524,7 +524,7 @@ def compute_metrics(flags):
                 test = kstest(feats_geant[:,i], feats_gen[:,i])
                 ks_metric, ks_pval = test.statistic, test.pvalue
 
-            sep_power_result_str += "%i %s: %.3e / %.3e (%.3f) \n" % (i, feat_name, sep_power, ks_metric, ks_pval)
+            sep_power_result_str += "%i %s: %.3e / %.3e \n" % (i, feat_name, sep_power, ks_metric)
 
             #ignore incident E
             if("Incident" in feat_name): continue
@@ -733,8 +733,6 @@ if(__name__ == "__main__"):
     parser.add_argument('--config', '-c', default='config_dataset2.json', help='Training parameters')
     parser.add_argument('-n', '--nevts', type=int,default=-1, help='Number of events to load')
     parser.add_argument('--EMin', type = float, default=0.00001, help='Voxel min energy (GeV)')
-    parser.add_argument('--EMin_rescale', dest='EMin_rescale', action='store_true', default=False, help='When applying min energy cut, rescale other voxels to preserve layer energy')
-    parser.add_argument('--EMin_no_rescale', dest='EMin_rescale', action='store_false', help='When applying min energy cut, do NOT rescale other voxels to preserve layer energy ')
     parser.add_argument('--name', default='Model', help='Model name (for plot labels)')
 
     parser.add_argument('--plot', default=False, action='store_true', help='Save 1D feature plots')

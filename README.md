@@ -35,11 +35,6 @@ An example usage would be:
 python hgcal_metrics.py -c config_HGCal_pions.json -g datasets/HGCal_central_2024_pions_eval_test.txt -p plots/eval_test/ -d  /uscms_data/d3/oamram/HGCal/HGCal_central_2024_pions/ --mode all --plot --name MyModel
 ```
 
-When using a non-zero EMin value, some voxels will get their energy set to zero for the evaluation. 
-The code automatically rescales the energy of
-other voxels in the layer to preserve the total layer energy.
-To disable this use the `--EMin_no_rescale` flag. 
-
 
 Note that computing all of the features for evaluation takes quite some time
 for the pion datasets. To avoid this significant overhead, the script saves
@@ -49,5 +44,5 @@ a file exists. To force a recreation of these files you can use the
 `--reprocess` flag
 
 
-The evaluation can optionally be done without the inclusion of the sparsity
-features with the `--no_sparse` flag.
+The evaluation can optionally be done without the inclusion of the occupancy
+features with the `--no_occupancy` flag.
