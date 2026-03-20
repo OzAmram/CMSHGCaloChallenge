@@ -132,3 +132,5 @@ def load_geom(geom_filename):
     #print("ncell max",  geom.max_ncell)
     #print("rbins",  np.amax(geom.ring_map) +1)
     return geom
+
+

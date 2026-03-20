@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import warnings
+import random
+import copy
 
 import h5py
 import jetnet
@@ -12,10 +14,20 @@ from sklearn.calibration import calibration_curve
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
+from scipy.stats import kstest
 
 import utils
 from plotting.plotting_utils import make_hist, make_profile
 
+#set random seed for everything
+def set_seed(seed = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # Essential for reproducibility, but may impact performance
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def _map_weights_to_layers(weights, n_layers, key_name):
     if len(weights) == n_layers + 1:
@@ -336,15 +348,6 @@ def compute_metrics(flags):
         generated = np.reshape(generated,shape_plot)
         if(EMin > 0.): # apply min energy cut on the unreweighted showers, mimicking the fact that we are cutting off the noise and then correct the layers' relative importance a la the weights!
             mask = generated < EMin
-            if(EMin_rescale):
-                generated[generated < 0] = 0 
-                d_masked = np.where(mask, generated, 0.)
-                lostE = np.sum(d_masked, axis = -1, keepdims=True)
-                ELayer = np.sum(generated, axis = -1, keepdims=True)
-                eps = 1e-10
-                rescale = (ELayer + eps)/(ELayer - lostE +eps)
-                rescale[ELayer < EMin] = 0.
-                generated *= rescale
             generated[mask] = 0.
 
         if layer_weights is not None:
@@ -462,6 +465,18 @@ def compute_metrics(flags):
         feat_names = [feat_names[idx] for idx in feats_no_occupancy]
 
 
+    #set seed for reproducibility 
+    set_seed(flags.seed)
+
+
+    if(flags.shuffle_labels):
+        #randomly shuffle labels, for diff geant-geant bootstraps
+        feats_all = np.concatenate([feats_geant, feats_gen], axis=0)
+        np.random.shuffle(feats_all)
+        half_idx = feats_all.shape[0]//2
+        feats_geant = feats_all[:half_idx]
+        feats_gen = feats_all[half_idx:]
+
 
     do_hists = do_classifier = do_fpd = False
 
@@ -483,8 +498,7 @@ def compute_metrics(flags):
         sep_power_result_str = ""
         sep_power_sums = {
             "Energy": 0.,
-            "LongitudinalProfile": 0.,
-            "Transverse": 0.,
+            "Transverse":0.,
             "Center": 0.,
             "Width": 0.,
             "Occupancy": 0.,
@@ -498,6 +512,7 @@ def compute_metrics(flags):
             "Occupancy": 0,
             "all": 0,
         }
+        ks_sums = copy.copy(sep_power_sums)
 
         # Per-feature histograms
         for i, feat_name in enumerate(feat_names):
@@ -506,8 +521,10 @@ def compute_metrics(flags):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(feats_geant[:,i], feats_gen[:,i], xlabel = feat_name, model_name=flags.name, fname=fname)
+                test = kstest(feats_geant[:,i], feats_gen[:,i])
+                ks_metric, ks_pval = test.statistic, test.pvalue
 
-            sep_power_result_str += "%i %s: %.3e \n" % (i, feat_name, sep_power)
+            sep_power_result_str += "%i %s: %.3e / %.3e \n" % (i, feat_name, sep_power, ks_metric)
 
             #ignore incident E
             if("Incident" in feat_name): continue
@@ -525,8 +542,11 @@ def compute_metrics(flags):
                 continue
 
             sep_power_sums[sum_key] += sep_power
+            ks_sums[sum_key] += ks_metric
             sep_power_counts[sum_key] += 1
             sep_power_sums['all'] += sep_power
+            sep_power_sums['all'] += sep_power
+            ks_sums['all'] += ks_metric
             sep_power_counts['all'] += 1
 
         # Convert fraction profiles to absolute energy if requested
@@ -555,10 +575,15 @@ def compute_metrics(flags):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(plot_long_geant[:,i], plot_long_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
-            sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
+                ks_metric = kstest(plot_long_geant[:,i], plot_long_gen[:,i]).statistic
+
+            sep_power_result_str += "%s: %.3e / %.3e \n" % (feat_name, sep_power, ks_metric)
             sep_power_sums["Energy"] += sep_power
+            ks_sums["Energy"] += ks_metric
             sep_power_counts["Energy"] += 1
+
             sep_power_sums['all'] += sep_power
+            ks_sums['all'] += ks_metric
             sep_power_counts['all'] += 1
 
         # Per-ring transverse profile histograms
@@ -569,10 +594,15 @@ def compute_metrics(flags):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 sep_power = make_hist(plot_trans_geant[:,i], plot_trans_gen[:,i], xlabel=feat_name, model_name=flags.name, fname=fname)
-            sep_power_result_str += "%s: %.3e \n" % (feat_name, sep_power)
+                ks_metric = kstest(plot_trans_geant[:,i], plot_trans_gen[:,i]).statistic
+
+            sep_power_result_str += "%s: %.3e / %.3e \n" % (feat_name, sep_power, ks_metric)
             sep_power_sums["Transverse"] += sep_power
+            ks_sums["Transverse"] += ks_metric
             sep_power_counts["Transverse"] += 1
+
             sep_power_sums['all'] += sep_power
+            ks_sums['all'] += ks_metric
             sep_power_counts['all'] += 1
 
         #detailed breakdown in sep file
@@ -588,7 +618,8 @@ def compute_metrics(flags):
             if norm <= 0:
                 continue
             avg_sep = sep_power_sums[key] / norm
-            sep_power_metrics_str += "Avg separation power of %s features: %.3e \n" % (key, avg_sep)
+            avg_ks = ks_sums[key] / norm
+            sep_power_metrics_str += "Avg separation power / KS of %s features: %.3e / %.3e \n" % (key, avg_sep, avg_ks)
 
         print(sep_power_metrics_str)
 
@@ -622,6 +653,7 @@ def compute_metrics(flags):
 
         labels_all = np.concatenate((labels_diffu, labels_geant), axis = 0)
         feats_all = np.concatenate((feats_cls_gen, feats_cls_geant), axis = 0)
+
 
         scaler = StandardScaler()
         feats_all = scaler.fit_transform(feats_all)
@@ -700,16 +732,18 @@ if(__name__ == "__main__"):
     parser.add_argument('--generated', '-g', default='', help='Generated showers')
     parser.add_argument('--config', '-c', default='config_dataset2.json', help='Training parameters')
     parser.add_argument('-n', '--nevts', type=int,default=-1, help='Number of events to load')
-    parser.add_argument('--EMin', type = float, default=0.00001, help='Voxel min energy')
-    parser.add_argument('--EMin_no_rescale', dest='EMin_rescale', action='store_false', help='When applying min energy cut, do not rescale other voxels to preserve layer energy (default is to rescale)')
+    parser.add_argument('--EMin', type = float, default=0.00001, help='Voxel min energy (GeV)')
     parser.add_argument('--name', default='Model', help='Model name (for plot labels)')
 
     parser.add_argument('--plot', default=False, action='store_true', help='Save 1D feature plots')
+    parser.add_argument('--seed', type=int, default=123, help='Set random seed for classifier')
 
     parser.add_argument('--cls_n_iters', default=1, type=int, help='Num classifiers to train')
     parser.add_argument('--cls_n_epochs', default=50, type=int, help='Num classifier epochs')
     parser.add_argument('--cls_batch_size', default=256, type=int, help='classifier batch size')
-    parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory')
+    parser.add_argument('--save_mem', action='store_true', default=False,help='Limit GPU memory for classifier')
+
+    parser.add_argument('--shuffle_labels', default=False, action='store_true', help='Randomly permute labels (for geant-geant bootstraps)')
 
     parser.add_argument('--geant_only', action='store_true', default=False,help='Plots with just geant')
     parser.add_argument('--single_energy', action='store_true', default=False,help='Flag for the evaluation at fixed incident energy')
