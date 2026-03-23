@@ -762,5 +762,4 @@ if(__name__ == "__main__"):
                         help='Plot per-layer/ring absolute energy instead of energy fraction')
 
     flags = parser.parse_args()
-    print("EMin_rescale", flags.EMin_rescale)
     compute_metrics(flags)
