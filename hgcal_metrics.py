@@ -332,7 +332,7 @@ def compute_metrics(flags):
 
 
 
-    def LoadFile(fname, EMin = -1.0, nevts = -1, EMin_rescale=True):
+    def LoadFile(fname, EMin = -1.0, nevts = -1):
         print("Load %s" % fname)
         end = None if nevts < 0 else nevts
         with h5py.File(fname,"r") as h5f:
@@ -360,7 +360,7 @@ def compute_metrics(flags):
 
         return generated,energies
 
-    def LoadSample(fname, EMin = -1.0, nevts = -1, reprocess=False, EMin_rescale=False):
+    def LoadSample(fname, EMin = -1.0, nevts = -1, reprocess=False ):
         suffix = ".feat.v4"  # v4: removed per-layer log energy from feats (redundant with profiles)
         if layer_weights is not None:
             suffix += ".%s" % flags.layer_weights_key
@@ -377,7 +377,7 @@ def compute_metrics(flags):
             data = np.load(feat_file)
             return data['feats'], data['long_profile'], data['trans_profile']
         else:
-            showers, energies = LoadFile(fname, EMin, flags.nevts, EMin_rescale=EMin_rescale)
+            showers, energies = LoadFile(fname, EMin, flags.nevts)
             feats = compute_feats(showers, energies, geom)
             long_profile, trans_profile = compute_profiles(showers, geom, nRings)
             try:
@@ -403,7 +403,7 @@ def compute_metrics(flags):
 
         for f_sample in f_sample_list:
             try:
-                feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess, EMin_rescale=flags.EMin_rescale)
+                feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess)
                 if(feats_gen is None):
                     feats_gen, long_gen, trans_gen = feats, lp, tp
                 else:
@@ -422,7 +422,7 @@ def compute_metrics(flags):
     f_geant_list = utils.get_files(dataset_config['EVAL'], folder=flags.data_folder)
     for f_sample in f_geant_list:
         try:
-            feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess, EMin_rescale=flags.EMin_rescale)
+            feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess )
         except (OSError, KeyError, ValueError):
             print("Bad Geant file, skipping")
             continue
@@ -762,5 +762,4 @@ if(__name__ == "__main__"):
                         help='Plot per-layer/ring absolute energy instead of energy fraction')
 
     flags = parser.parse_args()
-    print("EMin_rescale", flags.EMin_rescale)
     compute_metrics(flags)
