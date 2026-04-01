@@ -541,6 +541,9 @@ def compute_metrics(flags):
                 print("unmatched feat %s" % feat_name)
                 continue
 
+            if np.isnan(sep_power) or np.isnan(ks_metric):
+                print("WARNING: NaN sep_power or KS for feature %s, skipping" % feat_name)
+                continue
             sep_power_sums[sum_key] += sep_power
             ks_sums[sum_key] += ks_metric
             sep_power_counts[sum_key] += 1
@@ -578,6 +581,9 @@ def compute_metrics(flags):
                 ks_metric = kstest(plot_long_geant[:,i], plot_long_gen[:,i]).statistic
 
             sep_power_result_str += "%s: %.3e / %.3e \n" % (feat_name, sep_power, ks_metric)
+            if np.isnan(sep_power) or np.isnan(ks_metric):
+                print("WARNING: NaN sep_power or KS for %s, skipping" % feat_name)
+                continue
             sep_power_sums["Energy"] += sep_power
             ks_sums["Energy"] += ks_metric
             sep_power_counts["Energy"] += 1
@@ -597,6 +603,9 @@ def compute_metrics(flags):
                 ks_metric = kstest(plot_trans_geant[:,i], plot_trans_gen[:,i]).statistic
 
             sep_power_result_str += "%s: %.3e / %.3e \n" % (feat_name, sep_power, ks_metric)
+            if np.isnan(sep_power) or np.isnan(ks_metric):
+                print("WARNING: NaN sep_power or KS for %s, skipping" % feat_name)
+                continue
             sep_power_sums["Transverse"] += sep_power
             ks_sums["Transverse"] += ks_metric
             sep_power_counts["Transverse"] += 1
@@ -624,6 +633,7 @@ def compute_metrics(flags):
         print(sep_power_metrics_str)
 
         with open(os.path.join(flags.plot_folder, 'metrics.txt'), 'w') as f:
+            f.write("Num generated showers: %i\n" % feats_gen.shape[0])
             f.write(sep_power_metrics_str)
 
         # Summary profile plots (average ± std across showers)
@@ -646,6 +656,14 @@ def compute_metrics(flags):
     # Combine scalar features with per-shower profile fractions for classifier/FPD
     feats_cls_gen = np.concatenate((feats_gen, long_gen, trans_gen), axis=1)
     feats_cls_geant = np.concatenate((feats_geant, long_geant, trans_geant), axis=1)
+
+    # Remove showers with NaN features before classifier/FPD
+    nan_mask_gen   = np.any(np.isnan(feats_cls_gen),   axis=1)
+    nan_mask_geant = np.any(np.isnan(feats_cls_geant), axis=1)
+    if nan_mask_gen.any() or nan_mask_geant.any():
+        print(f"Removing {nan_mask_gen.sum()} generated and {nan_mask_geant.sum()} Geant4 showers with NaN features before classifier/FPD")
+        feats_cls_gen   = feats_cls_gen[~nan_mask_gen]
+        feats_cls_geant = feats_cls_geant[~nan_mask_geant]
 
     if(do_classifier):
         labels_diffu = np.ones((feats_cls_gen.shape[0], 1), dtype=np.float32)
