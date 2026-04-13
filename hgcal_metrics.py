@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.utils.data as torchdata
 from sklearn.calibration import calibration_curve
+from sklearn.decomposition import PCA
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
@@ -28,6 +29,77 @@ def set_seed(seed = 42):
     # Essential for reproducibility, but may impact performance
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+def truncate_layer_features(feats_cls, n_layers, max_layer=30):
+    """Return feats_cls with per-layer features for layer >= max_layer removed.
+
+    Expected feats_cls column layout:
+      [0]                       incident_E          (scalar)
+      [1]                       E_ratio             (scalar)
+      [2 : 2+n_layers]          E_x_center          (per layer)
+      [2+n_layers : 2+2*n_l]    E_x_width           (per layer)
+      [2+2*n_l : 2+3*n_l]       E_y_center          (per layer)
+      [2+3*n_l : 2+4*n_l]       E_y_width           (per layer)
+      [2+4*n_l : 2+5*n_l]       layer_occupancy     (per layer)
+      [2+5*n_l : 2+6*n_l]       longitudinal profile(per layer)
+      [2+6*n_l : ]              transverse profile  (per ring, kept in full)
+
+    Args:
+        feats_cls:  (N, D) combined feature array.
+        n_layers:   Total number of calorimeter layers.
+        max_layer:  Only keep layers [0, max_layer); drop layer >= max_layer.
+
+    Returns:
+        (N, D') array with the high-layer columns removed.
+    """
+    n_per_layer_blocks = 6  # 5 from compute_feats + 1 longitudinal profile
+    keep = np.ones(feats_cls.shape[1], dtype=bool)
+    for b in range(n_per_layer_blocks):
+        drop_start = 2 + b * n_layers + max_layer
+        drop_end   = 2 + (b + 1) * n_layers
+        keep[drop_start:drop_end] = False
+    n_removed = feats_cls.shape[1] - keep.sum()
+    #print(f"Layer truncation: keeping layers 0-{max_layer-1}, "
+    #      f"removed {n_removed} columns, {keep.sum()} remaining.")
+    return feats_cls[:, keep]
+
+
+def pca_reduce(feats_reference, feats_model, n_components=50):
+    """Fit PCA on the reference (Geant4) sample and project both samples.
+
+    The scaler and PCA are fitted exclusively on *feats_reference* so that
+    the projection basis is independent of the model being evaluated.
+
+    Args:
+        feats_reference: (N_ref, D) array of reference (Geant4) features.
+        feats_model:     (N_mod, D) array of model/generated features.
+        n_components:    Number of principal components to retain (default 50).
+
+    Returns:
+        ref_pca:  (N_ref, n_components) projected reference features.
+        model_pca:(N_mod, n_components) projected model features.
+    """
+    scaler = StandardScaler()
+    ref_scaled   = scaler.fit_transform(feats_reference)
+    model_scaled = scaler.transform(feats_model)
+
+    # Fit full PCA to get complete variance spectrum for diagnostics
+    pca_full = PCA()
+    pca_full.fit(ref_scaled)
+
+    cumvar = np.cumsum(pca_full.explained_variance_ratio_)
+    for thresh in (0.90, 0.95, 0.99):
+        n = np.searchsorted(cumvar, thresh) + 1
+        print(f"  Components for {thresh*100:.0f}% variance: {n}")
+    explained_n = cumvar[n_components - 1]
+    print(f"PCA: top {n_components} components explain {explained_n*100:.2f}% of variance")
+
+    # Project using only the top n_components eigenvectors
+    components = pca_full.components_[:n_components]
+    ref_pca   = ref_scaled   @ components.T
+    model_pca = model_scaled @ components.T
+    return ref_pca, model_pca
+
 
 def _map_weights_to_layers(weights, n_layers, key_name):
     if len(weights) == n_layers + 1:
@@ -299,6 +371,7 @@ def compute_metrics(flags):
     dataset_num = dataset_config.get('DATASET_NUM', 2)
     hgcal = dataset_config.get('HGCAL', False)
     max_cells = dataset_config.get('MAX_CELLS', None)
+    max_layer_eval = dataset_config.get('MAX_LAYER_EVAL', None)
 
     if(torch.cuda.is_available()): device = torch.device('cuda')
     else: device = torch.device('cpu')
@@ -544,6 +617,10 @@ def compute_metrics(flags):
             if np.isnan(sep_power) or np.isnan(ks_metric):
                 print("WARNING: NaN sep_power or KS for feature %s, skipping" % feat_name)
                 continue
+            if max_layer_eval is not None and " Layer " in feat_name:
+                layer_num = int(feat_name.split(" Layer ")[-1])
+                if layer_num >= max_layer_eval:
+                    continue
             sep_power_sums[sum_key] += sep_power
             ks_sums[sum_key] += ks_metric
             sep_power_counts[sum_key] += 1
@@ -583,6 +660,8 @@ def compute_metrics(flags):
             sep_power_result_str += "%s: %.3e / %.3e \n" % (feat_name, sep_power, ks_metric)
             if np.isnan(sep_power) or np.isnan(ks_metric):
                 print("WARNING: NaN sep_power or KS for %s, skipping" % feat_name)
+                continue
+            if max_layer_eval is not None and i >= max_layer_eval:
                 continue
             sep_power_sums["Energy"] += sep_power
             ks_sums["Energy"] += ks_metric
@@ -665,6 +744,12 @@ def compute_metrics(flags):
         feats_cls_gen   = feats_cls_gen[~nan_mask_gen]
         feats_cls_geant = feats_cls_geant[~nan_mask_geant]
 
+    # Optionally truncate per-layer features at MAX_LAYER_EVAL (all metrics)
+    if max_layer_eval is not None:
+        n_layers = long_gen.shape[1]
+        feats_cls_gen   = truncate_layer_features(feats_cls_gen,   n_layers, max_layer=max_layer_eval)
+        feats_cls_geant = truncate_layer_features(feats_cls_geant, n_layers, max_layer=max_layer_eval)
+
     if(do_classifier):
         labels_diffu = np.ones((feats_cls_gen.shape[0], 1), dtype=np.float32)
         labels_geant = np.zeros((feats_cls_geant.shape[0], 1), dtype=np.float32)
@@ -725,8 +810,8 @@ def compute_metrics(flags):
                 f.write(cls_string)
 
     if(do_fpd):
-        min_samples = min(feats_cls_geant.shape[0], 20000)
-        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen, min_samples = min_samples)
+        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen)
+
         kpd_val, kpd_err = jetnet.evaluation.kpd(feats_cls_geant, feats_cls_gen)
 
         fpd_result_str = (

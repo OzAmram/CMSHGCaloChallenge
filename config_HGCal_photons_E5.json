@@ -1,7 +1,7 @@
 {
     "FILES": "datasets/photon_files_train.txt",
     "VAL_FILES": "datasets/photon_files_val.txt",
-    "EVAL": "datasets/photon_files_test.txt",
+    "EVAL": "datasets/Photon_E5.txt",
     "HGCAL": true,
     "BIN_FILE": "HGCalShowers/geoms/HGCal_geo_2024.pkl",
     "PART_TYPE": "photon",
