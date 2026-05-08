@@ -16,7 +16,22 @@ def default_feature_label(feature_name):
     label = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
     label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
     label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
-    return re.sub(r"\s+", " ", label).strip()
+    label = re.sub(r"\s+", " ", label).strip()
+    # Add units: X/Y center & width are in cm; occupancy is in % (when post-converted)
+    name_compact = re.sub(r"\s+", "", feature_name).lower()
+    if re.match(r"^[xy](center|width)layer\d+$", name_compact):
+        label = re.sub(r"\b([XY]) (Center|Width)\b", r"\1 \2 [cm]", label)
+    elif name_compact.startswith("occupancylayer"):
+        label = re.sub(r"\bOccupancy\b", "Occupancy [%]", label)
+    elif name_compact == "incidentenergy":
+        label = label + " [GeV]"
+    # Capitalize trailing "layer N" / "ring N"
+    label = re.sub(
+        r"\s*\b([Ll]ayer|[Rr]ing) (\d+)$",
+        lambda m: f" {m.group(1).capitalize()} {m.group(2)}",
+        label,
+    )
+    return label
 
 
 
@@ -52,10 +67,10 @@ def apply_plot_style():
     })
 
 
-def add_experiment_label(ax, label="Preliminary"):
+def add_experiment_label(ax, label="Preliminary", rlabel="Phase-II"):
     """Add the CMS experiment label using mplhep."""
     local_hep = _require_mplhep()
-    local_hep.cms.label(ax=ax, label=label, data=False, rlabel="Phase-II")
+    local_hep.cms.label(ax=ax, label=label, data=False, rlabel=rlabel)
 
 
 def dup(a):

@@ -214,6 +214,13 @@ def get_feat_names(nLayers):
 def compute_profiles(showers, geom, n_rings):
     """Compute longitudinal and transverse shower profiles (not used as classifier features)."""
     eps = 1e-8
+    # Filter out showers with any NaN voxels
+    finite_mask = np.all(np.isfinite(showers.reshape(showers.shape[0], -1)), axis=1)
+    if not np.all(finite_mask):
+        n_bad = int(np.sum(~finite_mask))
+        print("compute_profiles: dropping %d non-finite showers out of %d" % (n_bad, len(finite_mask)))
+        showers = showers[finite_mask]
+
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_layer = np.sum(showers, axis=(2))
     longitudinal_profile = E_layer / (E_total + eps)

@@ -4,10 +4,12 @@ import glob
 import json
 import os
 import re
+import warnings
 from typing import Dict, List, Optional
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 
 from plotting.plotting_utils import CMS_COLORS, add_experiment_label, apply_plot_style
@@ -15,17 +17,17 @@ from plotting.plotting_utils import CMS_COLORS, add_experiment_label, apply_plot
 
 SUMMARY_STYLE_PRESETS = {
     "paper": {
-        "figsize": (8.0, 8.0),
+        "figsize": (12.0, 11.0),
         "height_ratios": (3.5, 1.0),
         "reference_color": "#202020",
         "reference_band_color": "#7f7f7f",
         "model_band_alpha": 0.0,
         "ratio_band_alpha": 0.0,
         "reference_band_alpha": 0.12,
-        "line_width": 1.8,
-        "reference_line_width": 2.0,
-        "legend_fontsize": 10.5,
-        "label_fontsize": 14.0,
+        "line_width": 2.0,
+        "reference_line_width": 3.5,
+        "legend_fontsize": 22,
+        "label_fontsize": 24,
         "legend_loc": "upper right",
         "legend_ncol": None,
         "ratio_ylim": None,
@@ -33,19 +35,20 @@ SUMMARY_STYLE_PRESETS = {
         "ratio_min_span": 0.10,
         "ratio_guard_low": 0.97,
         "ratio_guard_high": 1.03,
+        "upper_ylim_headroom": 1.6,
     },
     "diagnostic": {
-        "figsize": (8.0, 8.0),
-        "height_ratios": (3.2, 1.15),
+        "figsize": (12.0, 11.0),
+        "height_ratios": (3.5, 1.0),
         "reference_color": "#202020",
         "reference_band_color": "#7f7f7f",
         "model_band_alpha": 0.08,
         "ratio_band_alpha": 0.10,
         "reference_band_alpha": 0.12,
-        "line_width": 1.5,
-        "reference_line_width": 1.7,
-        "legend_fontsize": 11.0,
-        "label_fontsize": 14.0,
+        "line_width": 2.0,
+        "reference_line_width": 3.0,
+        "legend_fontsize": 22,
+        "label_fontsize": 24,
         "legend_loc": "upper right",
         "legend_ncol": None,
         "ratio_ylim": None,
@@ -53,15 +56,20 @@ SUMMARY_STYLE_PRESETS = {
         "ratio_min_span": 0.12,
         "ratio_guard_low": 0.96,
         "ratio_guard_high": 1.04,
+        "upper_ylim_headroom": 1.6,
     },
 }
 
 
+MODEL_LINESTYLES = ["-", "--", "-.", ":", (0, (3, 1, 1, 1)), (0, (5, 1))]
+
+
 class SummaryModelSpec(object):
-    def __init__(self, name, path, color=None):
+    def __init__(self, name, path, color=None, linestyle=None):
         self.name = name
         self.path = path
         self.color = color
+        self.linestyle = linestyle
 
 
 class SummaryPlotConfig(object):
@@ -71,20 +79,24 @@ class SummaryPlotConfig(object):
         output_dir="plots/summary/",
         feature_labels=None,
         cms_qualifier="Preliminary",
+        data_label="",
         style=None,
+        geom_file=None,
     ):
         self.models = models
         self.output_dir = output_dir
         self.feature_labels = feature_labels or {}
         self.cms_qualifier = cms_qualifier
+        self.data_label = data_label
         self.style = style or SummaryStyleConfig()
+        self.geom_file = geom_file
 
 
 class SummaryStyleConfig(object):
     def __init__(
         self,
         preset="paper",
-        figsize=(8.0, 8.0),
+        figsize=(12.0, 11.0),
         height_ratios=(3.5, 1.0),
         reference_color="#202020",
         reference_band_color="#7f7f7f",
@@ -92,9 +104,9 @@ class SummaryStyleConfig(object):
         ratio_band_alpha=0.0,
         reference_band_alpha=0.12,
         line_width=1.8,
-        reference_line_width=2.0,
-        legend_fontsize=10.5,
-        label_fontsize=14.0,
+        reference_line_width=3.0,
+        legend_fontsize=18,
+        label_fontsize=22,
         legend_loc="upper right",
         legend_ncol=None,
         ratio_ylim=None,
@@ -102,6 +114,7 @@ class SummaryStyleConfig(object):
         ratio_min_span=0.10,
         ratio_guard_low=0.97,
         ratio_guard_high=1.03,
+        upper_ylim_headroom=1.6,
     ):
         self.preset = preset
         self.figsize = figsize
@@ -122,6 +135,7 @@ class SummaryStyleConfig(object):
         self.ratio_min_span = ratio_min_span
         self.ratio_guard_low = ratio_guard_low
         self.ratio_guard_high = ratio_guard_high
+        self.upper_ylim_headroom = upper_ylim_headroom
 
 
 def dup(arr):
@@ -292,6 +306,7 @@ def load_summary_style_config(raw_style):
         ratio_min_span=_validate_positive("ratio_min_span", style_payload["ratio_min_span"]),
         ratio_guard_low=ratio_guard_low,
         ratio_guard_high=ratio_guard_high,
+        upper_ylim_headroom=_validate_positive("upper_ylim_headroom", style_payload["upper_ylim_headroom"]),
     )
 
 
@@ -315,11 +330,13 @@ def load_summary_plot_config(config_path):
         if len(name) == 0 or len(path) == 0:
             raise ValueError(f"`models[{idx}]` must define non-empty `name` and `path`.")
 
+        raw_ls = model_payload.get("linestyle")
         models.append(
             SummaryModelSpec(
                 name=name,
                 path=_resolve_relative_path(config_dir, path),
                 color=_validate_model_color(model_payload.get("color")),
+                linestyle=raw_ls,
             )
         )
 
@@ -329,14 +346,21 @@ def load_summary_plot_config(config_path):
     output_dir = _resolve_relative_path(config_dir, output_dir)
 
     cms_qualifier = str(payload.get("cms_qualifier", "Preliminary")).strip() or "Preliminary"
+    data_label = str(payload.get("data_label", "")).strip()
     feature_labels = _normalize_feature_labels(payload.get("feature_labels"))
     style = load_summary_style_config(payload.get("style"))
+    geom_file_raw = payload.get("geom_file")
+    geom_file = None
+    if geom_file_raw:
+        geom_file = _resolve_relative_path(config_dir, str(geom_file_raw).strip())
     return SummaryPlotConfig(
         models=models,
         output_dir=output_dir,
         feature_labels=feature_labels,
         cms_qualifier=cms_qualifier,
+        data_label=data_label,
         style=style,
+        geom_file=geom_file,
     )
 
 
@@ -352,7 +376,9 @@ def build_summary_plot_config(input_files_arg=None, config_path=None, output_dir
                 output_dir=output_dir,
                 feature_labels=config.feature_labels,
                 cms_qualifier=config.cms_qualifier,
+                data_label=config.data_label,
                 style=config.style,
+                geom_file=config.geom_file,
             )
         return config
 
@@ -413,6 +439,44 @@ def resolve_summary_npz_files(path_spec):
     ]
 
 
+_OCCUPANCY_RE = re.compile(r"^OccupancyLayer(\d+)$", re.IGNORECASE)
+
+
+def _load_layer_ncells(geom_file):
+    """Load per-layer cell counts from a geometry pickle. Returns a 1D float array."""
+    if not geom_file or not os.path.isfile(geom_file):
+        return None
+    import utils as _utils
+    geom = _utils.load_geom(geom_file)
+    return np.asarray(geom.ncells, dtype=np.float64)
+
+
+def _occupancy_layer_index(feature_name):
+    match = _OCCUPANCY_RE.match(feature_name)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _convert_occupancy_payload(payload, ncells_layer):
+    """Convert an occupancy histogram payload from active-cell counts to percent.
+
+    Bin edges are scaled by 100/ncells (counts -> %), and densities are scaled
+    by ncells/100 to preserve the integral (= 1).
+    """
+    if ncells_layer is None or ncells_layer <= 0:
+        return payload
+    k = 100.0 / float(ncells_layer)
+    inv = 1.0 / k
+    return {
+        "binning": payload["binning"] * k,
+        "dist_ref": payload["dist_ref"] * inv,
+        "dist_ref_err": payload["dist_ref_err"] * inv,
+        "dist_gen": payload["dist_gen"] * inv,
+        "dist_gen_err": payload["dist_gen_err"] * inv,
+    }
+
+
 def load_histogram_npz(npz_file):
     with np.load(npz_file) as data:
         required = {"dist_ref", "dist_ref_err", "dist_gen", "dist_gen_err", "binning"}
@@ -428,9 +492,23 @@ def load_histogram_npz(npz_file):
         }
 
 
+def load_profile_npz(npz_file):
+    with np.load(npz_file) as data:
+        required = {"ref_mean", "ref_std", "ref_sem", "gen_mean", "gen_std", "gen_sem"}
+        missing = required - set(data.keys())
+        if len(missing) > 0:
+            return None
+        return {
+            "ref_mean": np.asarray(data["ref_mean"], dtype=np.float64),
+            "ref_sem": np.asarray(data["ref_sem"], dtype=np.float64),
+            "gen_mean": np.asarray(data["gen_mean"], dtype=np.float64),
+            "gen_sem": np.asarray(data["gen_sem"], dtype=np.float64),
+        }
+
+
 def default_feature_label(feature_name):
     label = feature_name.replace("_", " ")
-    label = label.replace("Energyfraction", "Energy fraction")
+    label = label.replace("Energyfraction", "Energy fraction ")
     label = label.replace("LongitudinalProfile", "Longitudinal Profile")
     label = label.replace("TransverseProfile", "Transverse Profile")
     label = label.replace("IncidentE", "Incident E")
@@ -439,7 +517,22 @@ def default_feature_label(feature_name):
     label = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
     label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
     label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
-    return re.sub(r"\s+", " ", label).strip()
+    label = re.sub(r"\s+", " ", label).strip()
+    # Add units: X/Y center & width are in cm; occupancy is in % (post-converted)
+    name_lower = feature_name.lower()
+    if re.match(r"^[xy](center|width)layer\d+$", name_lower):
+        label = re.sub(r"\b([XY]) (Center|Width)\b", r"\1 \2 [cm]", label)
+    elif name_lower.startswith("occupancylayer"):
+        label = re.sub(r"\bOccupancy\b", "Occupancy [%]", label)
+    elif name_lower == "incidentenergy":
+        label = label + " [GeV]"
+    # Capitalize and prepend a comma before "layer N" / "ring N" tail
+    label = re.sub(
+        r"\s*\b([Ll]ayer|[Rr]ing) (\d+)$",
+        lambda m: f", {m.group(1).capitalize()} {m.group(2)}",
+        label,
+    )
+    return label
 
 
 def get_feature_label(feature_name, feature_labels):
@@ -461,6 +554,13 @@ def resolve_model_colors(models):
     return resolved
 
 
+def resolve_model_linestyles(models):
+    resolved = {}
+    for idx, model in enumerate(models):
+        resolved[model.name] = model.linestyle or MODEL_LINESTYLES[idx % len(MODEL_LINESTYLES)]
+    return resolved
+
+
 def _ratio_window(dist_ref, dist_ref_err, ratio, ratio_err):
     finite_mask = np.isfinite(ratio) & np.isfinite(ratio_err)
     stable_mask = finite_mask & (dist_ref > 3.0 * dist_ref_err)
@@ -477,6 +577,96 @@ def _legend_columns(n_models):
     return 1 if n_models <= 4 else 2
 
 
+def _setup_summary_axes(style, summary_config):
+    """Create figure with upper + ratio panel and apply common formatting."""
+    fig, ax = plt.subplots(
+        2, 1,
+        figsize=style.figsize,
+        gridspec_kw={"hspace": 0.12, "height_ratios": style.height_ratios},
+        sharex=True,
+    )
+    return fig, ax
+
+
+def _finish_summary_axes(fig, ax, style, summary_config, feature_name, n_models,
+                         ratio_min, ratio_max):
+    """Apply common labels, legend, experiment label, and ratio y-limits."""
+    rlabel = summary_config.data_label if summary_config.data_label else "Phase-II"
+    ax[0].set_ylim(0.0, None)
+    # Add headroom so legend/CMS label don't overlap data
+    _, ymax = ax[0].get_ylim()
+    ax[0].set_ylim(0.0, ymax * style.upper_ylim_headroom)
+    ax[0].set_ylabel("Arbitrary units", fontsize=style.label_fontsize, loc="top")
+    ax[1].set_xlabel(
+        get_feature_label(feature_name, summary_config.feature_labels),
+        fontsize=style.label_fontsize,
+    )
+    ax[1].set_ylabel("Model / Geant4", fontsize=max(style.label_fontsize - 2.0, 1.0), loc="center")
+
+    # Align tick label sizes with axis labels
+    tick_fontsize = max(style.label_fontsize - 4.0, 12.0)
+    for a in ax:
+        a.tick_params(axis="both", which="major", labelsize=tick_fontsize)
+        a.tick_params(axis="both", which="minor", labelsize=tick_fontsize - 2.0)
+
+    # Light grid on ratio panel for readability
+    ax[1].yaxis.grid(True, which="major", color="#cccccc", linewidth=0.5, alpha=0.6)
+    ax[1].set_axisbelow(True)
+
+    ax[0].legend(
+        loc=style.legend_loc,
+        ncol=style.legend_ncol or _legend_columns(n_models + 1),
+        frameon=False,
+        fontsize=style.legend_fontsize,
+        handlelength=3.0,
+        columnspacing=1.0,
+    )
+    add_experiment_label(ax[0], label=summary_config.cms_qualifier, rlabel=rlabel)
+
+    if style.ratio_ylim is not None:
+        ax[1].set_ylim(style.ratio_ylim[0], style.ratio_ylim[1])
+    else:
+        if not np.isfinite(ratio_min) or not np.isfinite(ratio_max):
+            ratio_min, ratio_max = 0.92, 1.08
+        # Symmetric around 1.0: find max deviation, add padding
+        dev_lo = max(1.0 - ratio_min, 1.0 - style.ratio_guard_low)
+        dev_hi = max(ratio_max - 1.0, style.ratio_guard_high - 1.0)
+        dev = max(dev_lo, dev_hi)
+        dev *= (1.0 + style.ratio_pad_fraction)
+        dev = max(dev, style.ratio_min_span / 2.0)
+        # Hard cap: never exceed [0, 2]
+        dev = min(dev, 1.0)
+        ax[1].set_ylim(1.0 - dev, 1.0 + dev)
+
+    fig.subplots_adjust(left=0.12, right=0.96, top=0.92, bottom=0.10)
+
+
+def _save_summary_fig(fig, output_dir, feature_name, upper_ylim_headroom=1.4):
+    output_base = os.path.join(output_dir, f"summary_{feature_name}")
+    ax0 = fig.axes[0]
+    # Save linear version
+    fig.savefig(output_base + ".png", dpi=150)
+    fig.savefig(output_base + ".pdf", dpi=300, format="pdf")
+    # Save log-y version
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        ax0.set_yscale("log")
+    ax0.set_ylim(auto=True)
+    ax0.relim()
+    ax0.autoscale_view()
+    ymin, ymax = ax0.get_ylim()
+    # In log scale, headroom needs to be applied in log-space
+    # e.g. headroom=1.6 means extend by 60% of the log-range
+    if ymax > 0 and ymin > 0:
+        log_range = np.log10(ymax) - np.log10(ymin)
+        ax0.set_ylim(ymin, 10 ** (np.log10(ymax) + log_range * (upper_ylim_headroom - 1.0)))
+    else:
+        ax0.set_ylim(ymin, ymax * upper_ylim_headroom)
+    fig.savefig(output_base + "_logy.png", dpi=150)
+    fig.savefig(output_base + "_logy.pdf", dpi=300, format="pdf")
+    plt.close(fig)
+
+
 def make_summary_plots(summary_config):
     apply_plot_style()
     os.makedirs(summary_config.output_dir, exist_ok=True)
@@ -484,6 +674,7 @@ def make_summary_plots(summary_config):
     style = summary_config.style
     model_sources = summary_config.models
     model_colors = resolve_model_colors(model_sources)
+    model_linestyles = resolve_model_linestyles(model_sources)
     model_feature_files = {}
 
     for model_spec in model_sources:
@@ -507,12 +698,38 @@ def make_summary_plots(summary_config):
     if len(common_features) == 0:
         raise ValueError("No common feature names found across summary plot inputs.")
 
+    layer_ncells = _load_layer_ncells(summary_config.geom_file)
+    if layer_ncells is None and summary_config.geom_file:
+        print(f"WARNING: geom_file '{summary_config.geom_file}' not found; "
+              "occupancy will remain in raw cell counts.")
+
+    # Separate histogram features from profile features
+    profile_features = []
+    histogram_features = []
     for feature_name in common_features:
+        # Try loading as profile first from the first model
+        first_model = model_sources[0].name
+        npz_file = model_feature_files[first_model][feature_name]
+        profile_payload = load_profile_npz(npz_file)
+        if profile_payload is not None:
+            profile_features.append(feature_name)
+        else:
+            histogram_features.append(feature_name)
+
+    # --- Histogram overlay plots ---
+    for feature_name in histogram_features:
         loaded = []
         binning_ref = None
         geant_ref = None
         geant_ref_err = None
         skip_feature = False
+
+        # Detect occupancy features and pre-compute the per-layer cell count
+        occ_layer = _occupancy_layer_index(feature_name)
+        occ_ncells = None
+        if occ_layer is not None and layer_ncells is not None:
+            if 0 <= occ_layer < layer_ncells.size:
+                occ_ncells = float(layer_ncells[occ_layer])
 
         for model_spec in model_sources:
             model_name = model_spec.name
@@ -524,6 +741,8 @@ def make_summary_plots(summary_config):
                 )
                 skip_feature = True
                 break
+            if occ_ncells is not None:
+                payload = _convert_occupancy_payload(payload, occ_ncells)
             if binning_ref is None:
                 binning_ref = payload["binning"]
                 geant_ref = payload["dist_ref"]
@@ -554,13 +773,7 @@ def make_summary_plots(summary_config):
         if skip_feature:
             continue
 
-        fig, ax = plt.subplots(
-            2,
-            1,
-            figsize=style.figsize,
-            gridspec_kw={"hspace": 0.0, "height_ratios": style.height_ratios},
-            sharex=True,
-        )
+        fig, ax = _setup_summary_axes(style, summary_config)
 
         with np.errstate(divide="ignore", invalid="ignore"):
             geant_ratio_err = np.divide(
@@ -602,6 +815,7 @@ def make_summary_plots(summary_config):
         ratio_max = -np.inf
         for model_name, payload in loaded:
             color = model_colors[model_name]
+            ls = model_linestyles[model_name]
 
             ax[0].step(
                 binning_ref,
@@ -611,7 +825,7 @@ def make_summary_plots(summary_config):
                 linewidth=style.line_width,
                 alpha=0.98,
                 color=color,
-                linestyle="-",
+                linestyle=ls,
             )
             if style.model_band_alpha > 0.0:
                 ax[0].fill_between(
@@ -644,6 +858,7 @@ def make_summary_plots(summary_config):
                 linewidth=style.line_width,
                 alpha=0.98,
                 color=color,
+                linestyle=ls,
             )
             if style.ratio_band_alpha > 0.0:
                 ax[1].fill_between(
@@ -672,40 +887,107 @@ def make_summary_plots(summary_config):
             color=style.reference_color,
         )
         ax[0].set_xlim(binning_ref[0], binning_ref[-1])
-        ax[0].set_ylim(0.0, None)
-        ax[0].set_ylabel("a.u.", fontsize=style.label_fontsize, loc="center")
-        ax[1].set_xlabel(
-            get_feature_label(feature_name, summary_config.feature_labels),
-            fontsize=style.label_fontsize,
-        )
-        ax[1].set_ylabel("Ratio to Geant4", fontsize=max(style.label_fontsize - 1.0, 1.0), loc="center")
-        ax[0].legend(
-            loc=style.legend_loc,
-            ncol=style.legend_ncol or _legend_columns(len(loaded) + 1),
-            frameon=False,
-            fontsize=style.legend_fontsize,
-            handlelength=2.0,
-            columnspacing=1.0,
-        )
-        add_experiment_label(ax[0], label=summary_config.cms_qualifier)
 
-        if style.ratio_ylim is not None:
-            ax[1].set_ylim(style.ratio_ylim[0], style.ratio_ylim[1])
-        else:
-            if not np.isfinite(ratio_min) or not np.isfinite(ratio_max):
-                ratio_min, ratio_max = 0.92, 1.08
-            ratio_min = min(ratio_min, style.ratio_guard_low)
-            ratio_max = max(ratio_max, style.ratio_guard_high)
-            ratio_pad = style.ratio_pad_fraction * max(
-                ratio_max - ratio_min, style.ratio_min_span
-            )
-            ax[1].set_ylim(max(0.0, ratio_min - ratio_pad), ratio_max + ratio_pad)
+        _finish_summary_axes(fig, ax, style, summary_config, feature_name,
+                             len(loaded), ratio_min, ratio_max)
+        _save_summary_fig(fig, summary_config.output_dir, feature_name, style.upper_ylim_headroom)
 
-        fig.tight_layout(pad=0.0, w_pad=0.0, h_pad=0.0, rect=(0.01, 0.01, 0.98, 0.98))
-        output_base = os.path.join(summary_config.output_dir, f"summary_{feature_name}")
-        fig.savefig(output_base + ".png")
-        fig.savefig(output_base + ".pdf", dpi=300, format="pdf")
-        plt.close(fig)
+    # --- Profile overlay plots ---
+    for feature_name in profile_features:
+        loaded_profiles = []
+        ref_mean_ref = None
+        skip_feature = False
+
+        for model_spec in model_sources:
+            model_name = model_spec.name
+            npz_file = model_feature_files[model_name][feature_name]
+            payload = load_profile_npz(npz_file)
+            if payload is None:
+                print(f"Skipping profile {feature_name}: missing keys ({npz_file})")
+                skip_feature = True
+                break
+            if ref_mean_ref is None:
+                ref_mean_ref = payload["ref_mean"]
+            elif not np.allclose(payload["ref_mean"], ref_mean_ref, rtol=1e-6, atol=1e-12):
+                print(
+                    f"Skipping profile {feature_name}: incompatible Geant4 reference for "
+                    f"model {model_name}"
+                )
+                skip_feature = True
+                break
+            loaded_profiles.append((model_name, payload))
+
+        if skip_feature or len(loaded_profiles) == 0:
+            continue
+
+        ref_payload = loaded_profiles[0][1]
+        ref_mean = ref_payload["ref_mean"]
+        ref_sem = ref_payload["ref_sem"]
+        n_bins = len(ref_mean)
+        x = np.arange(n_bins)
+
+        fig, ax = _setup_summary_axes(style, summary_config)
+
+        # Geant4 reference
+        ax[0].step(x, ref_mean, where="mid", color=style.reference_color,
+                   linewidth=style.reference_line_width, alpha=0.95, label="Geant4",
+                   linestyle="-")
+        ax[0].fill_between(x, ref_mean - ref_sem, ref_mean + ref_sem,
+                           alpha=style.reference_band_alpha, color=style.reference_band_color,
+                           step="mid")
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ref_ratio_err = np.where(ref_mean > 0, ref_sem / ref_mean, 0.0)
+        ax[1].fill_between(x, 1 - ref_ratio_err, 1 + ref_ratio_err,
+                           alpha=style.reference_band_alpha, color=style.reference_band_color,
+                           step="mid")
+
+        # Mask bins where reference is near-zero to avoid ratio explosions
+        ref_threshold = 1e-3 * np.max(ref_mean) if np.max(ref_mean) > 0 else 0.0
+        stable_bins = ref_mean > ref_threshold
+
+        ratio_min = np.inf
+        ratio_max = -np.inf
+        for model_name, payload in loaded_profiles:
+            color = model_colors[model_name]
+            ls = model_linestyles[model_name]
+            gen_mean = payload["gen_mean"]
+            gen_sem = payload["gen_sem"]
+
+            ax[0].step(x, gen_mean, where="mid", color=color,
+                       linewidth=style.line_width, alpha=0.98, label=model_name,
+                       linestyle=ls)
+            if style.model_band_alpha > 0.0:
+                ax[0].fill_between(x, gen_mean - gen_sem, gen_mean + gen_sem,
+                                   alpha=style.model_band_alpha, color=color, step="mid")
+
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.where(ref_mean > 0, gen_mean / ref_mean, 1.0)
+                ratio_err = np.where(ref_mean > 0, gen_sem / ref_mean, 0.0)
+
+            ax[1].step(x, ratio, where="mid", color=color,
+                       linewidth=style.line_width, alpha=0.98, linestyle=ls)
+            if style.ratio_band_alpha > 0.0:
+                ax[1].fill_between(x, ratio - ratio_err, ratio + ratio_err,
+                                   alpha=style.ratio_band_alpha, color=color, step="mid")
+
+            finite = np.isfinite(ratio) & np.isfinite(ratio_err) & stable_bins
+            if np.any(finite):
+                ratio_min = min(ratio_min, float(np.nanmin(ratio[finite] - ratio_err[finite])))
+                ratio_max = max(ratio_max, float(np.nanmax(ratio[finite] + ratio_err[finite])))
+
+        ax[1].axhline(1.0, color=style.reference_color, linewidth=1.0, alpha=0.8)
+        ax[0].set_xlim(-0.5, n_bins - 0.5)
+
+        _finish_summary_axes(fig, ax, style, summary_config, feature_name,
+                             len(loaded_profiles), ratio_min, ratio_max)
+        # Override axis labels for profiles
+        if "Longitudinal" in feature_name:
+            ax[1].set_xlabel("Calorimeter Layer", fontsize=style.label_fontsize)
+        elif "Transverse" in feature_name:
+            ax[1].set_xlabel("Ring Number", fontsize=style.label_fontsize)
+        ax[0].set_ylabel("Avg. energy fraction", fontsize=style.label_fontsize, loc="top")
+        _save_summary_fig(fig, summary_config.output_dir, feature_name, style.upper_ylim_headroom)
 
     print(f"Summary plots saved in {summary_config.output_dir}")
 
