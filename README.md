@@ -60,5 +60,5 @@ a file exists. To force a recreation of these files you can use the
 `--reprocess` flag
 
 
-The evaluation can optionally be done without the inclusion of the sparsity
-features with the `--no_sparse` flag.
+The evaluation can optionally be done without the inclusion of the occupancy
+features with the `--no_occupancy` flag.
