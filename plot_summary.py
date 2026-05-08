@@ -16,6 +16,31 @@ from plotting.plotting_utils import CMS_COLORS, add_experiment_label, apply_plot
 
 
 SUMMARY_STYLE_PRESETS = {
+    "single_plot": {
+        "figsize": (8.0, 8.0),
+        "height_ratios": (3.0, 1.0),
+        "reference_color": "#000000",
+        "reference_band_color": "#000000",
+        "model_band_alpha": 0.2,
+        "ratio_band_alpha": 0.2,
+        "reference_band_alpha": 0.2,
+        "line_width": 1.0,
+        "reference_line_width": 1.0,
+        "reference_alpha": 0.8,
+        "model_alpha": 1.0,
+        "legend_fontsize": 16.0,
+        "label_fontsize": 16.0,
+        "legend_loc": "upper right",
+        "legend_ncol": 1,
+        "legend_handlelength": 1.2,
+        "ratio_ticks": (0.7, 1.0, 1.3),
+        "ratio_guide_lines": (0.7, 1.3),
+        "ratio_ylim": (0.5, 1.5),
+        "ratio_pad_fraction": 0.10,
+        "ratio_min_span": 0.10,
+        "ratio_guard_low": 0.70,
+        "ratio_guard_high": 1.30,
+    },
     "paper": {
         "figsize": (12.0, 11.0),
         "height_ratios": (3.5, 1.0),
@@ -26,10 +51,15 @@ SUMMARY_STYLE_PRESETS = {
         "reference_band_alpha": 0.12,
         "line_width": 2.0,
         "reference_line_width": 3.5,
+        "reference_alpha": 0.95,
+        "model_alpha": 0.98,
         "legend_fontsize": 22,
         "label_fontsize": 24,
         "legend_loc": "upper right",
         "legend_ncol": None,
+        "legend_handlelength": 2.0,
+        "ratio_ticks": None,
+        "ratio_guide_lines": None,
         "ratio_ylim": None,
         "ratio_pad_fraction": 0.10,
         "ratio_min_span": 0.10,
@@ -47,10 +77,15 @@ SUMMARY_STYLE_PRESETS = {
         "reference_band_alpha": 0.12,
         "line_width": 2.0,
         "reference_line_width": 3.0,
+        "reference_alpha": 0.95,
+        "model_alpha": 0.98,
         "legend_fontsize": 22,
         "label_fontsize": 24,
         "legend_loc": "upper right",
         "legend_ncol": None,
+        "legend_handlelength": 2.0,
+        "ratio_ticks": None,
+        "ratio_guide_lines": None,
         "ratio_ylim": None,
         "ratio_pad_fraction": 0.12,
         "ratio_min_span": 0.12,
@@ -105,10 +140,15 @@ class SummaryStyleConfig(object):
         reference_band_alpha=0.12,
         line_width=1.8,
         reference_line_width=3.0,
+        reference_alpha=0.95,
+        model_alpha=0.98,
         legend_fontsize=18,
         label_fontsize=22,
         legend_loc="upper right",
         legend_ncol=None,
+        legend_handlelength=2.0,
+        ratio_ticks=None,
+        ratio_guide_lines=None,
         ratio_ylim=None,
         ratio_pad_fraction=0.10,
         ratio_min_span=0.10,
@@ -126,10 +166,15 @@ class SummaryStyleConfig(object):
         self.reference_band_alpha = reference_band_alpha
         self.line_width = line_width
         self.reference_line_width = reference_line_width
+        self.reference_alpha = reference_alpha
+        self.model_alpha = model_alpha
         self.legend_fontsize = legend_fontsize
         self.label_fontsize = label_fontsize
         self.legend_loc = legend_loc
         self.legend_ncol = legend_ncol
+        self.legend_handlelength = legend_handlelength
+        self.ratio_ticks = ratio_ticks
+        self.ratio_guide_lines = ratio_guide_lines
         self.ratio_ylim = ratio_ylim
         self.ratio_pad_fraction = ratio_pad_fraction
         self.ratio_min_span = ratio_min_span
@@ -254,6 +299,14 @@ def _validate_ratio_ylim(value):
     return ratio_ylim
 
 
+def _validate_optional_tick_values(name, values):
+    if values is None:
+        return None
+    if not isinstance(values, (list, tuple)) or len(values) == 0:
+        raise ValueError("`%s` must be a non-empty list or tuple if provided." % name)
+    return tuple(float(value) for value in values)
+
+
 def load_summary_style_config(raw_style):
     if raw_style is None:
         raw_style = {}
@@ -295,10 +348,19 @@ def load_summary_style_config(raw_style):
         reference_line_width=_validate_positive(
             "reference_line_width", style_payload["reference_line_width"]
         ),
+        reference_alpha=_validate_unit_interval("reference_alpha", style_payload["reference_alpha"]),
+        model_alpha=_validate_unit_interval("model_alpha", style_payload["model_alpha"]),
         legend_fontsize=_validate_positive("legend_fontsize", style_payload["legend_fontsize"]),
         label_fontsize=_validate_positive("label_fontsize", style_payload["label_fontsize"]),
         legend_loc=str(style_payload["legend_loc"]).strip() or "upper right",
         legend_ncol=_validate_optional_positive_int("legend_ncol", style_payload["legend_ncol"]),
+        legend_handlelength=_validate_positive(
+            "legend_handlelength", style_payload["legend_handlelength"]
+        ),
+        ratio_ticks=_validate_optional_tick_values("ratio_ticks", style_payload["ratio_ticks"]),
+        ratio_guide_lines=_validate_optional_tick_values(
+            "ratio_guide_lines", style_payload["ratio_guide_lines"]
+        ),
         ratio_ylim=_validate_ratio_ylim(style_payload["ratio_ylim"]),
         ratio_pad_fraction=_validate_nonnegative(
             "ratio_pad_fraction", style_payload["ratio_pad_fraction"]
@@ -589,8 +651,13 @@ def _setup_summary_axes(style, summary_config):
 
 
 def _finish_summary_axes(fig, ax, style, summary_config, feature_name, n_models,
-                         ratio_min, ratio_max):
-    """Apply common labels, legend, experiment label, and ratio y-limits."""
+                         ratio_min, ratio_max, models_for_ratio_label=None):
+    """Apply common labels, legend, experiment label, and ratio y-limits.
+
+    ``models_for_ratio_label`` is the list of (model_name, payload) tuples used
+    to render the ratio panel. When given and a single model is plotted, the
+    ratio label uses ``Model / Geant4`` with that model's name.
+    """
     rlabel = summary_config.data_label if summary_config.data_label else "Phase-II"
     ax[0].set_ylim(0.0, None)
     # Add headroom so legend/CMS label don't overlap data
@@ -601,7 +668,13 @@ def _finish_summary_axes(fig, ax, style, summary_config, feature_name, n_models,
         get_feature_label(feature_name, summary_config.feature_labels),
         fontsize=style.label_fontsize,
     )
-    ax[1].set_ylabel("Model / Geant4", fontsize=max(style.label_fontsize - 2.0, 1.0), loc="center")
+    if models_for_ratio_label and len(models_for_ratio_label) == 1:
+        single_name = models_for_ratio_label[0][0]
+        ratio_label = r"$\frac{\text{%s}}{\text{Geant4}}$" % single_name
+    else:
+        ratio_label = "Model / Geant4"
+    ax[1].set_ylabel(ratio_label, fontsize=max(style.label_fontsize - 2.0, 1.0),
+                     loc="center")
 
     # Align tick label sizes with axis labels
     tick_fontsize = max(style.label_fontsize - 4.0, 12.0)
@@ -618,7 +691,7 @@ def _finish_summary_axes(fig, ax, style, summary_config, feature_name, n_models,
         ncol=style.legend_ncol or _legend_columns(n_models + 1),
         frameon=False,
         fontsize=style.legend_fontsize,
-        handlelength=3.0,
+        handlelength=getattr(style, "legend_handlelength", 3.0),
         columnspacing=1.0,
     )
     add_experiment_label(ax[0], label=summary_config.cms_qualifier, rlabel=rlabel)
@@ -637,6 +710,13 @@ def _finish_summary_axes(fig, ax, style, summary_config, feature_name, n_models,
         # Hard cap: never exceed [0, 2]
         dev = min(dev, 1.0)
         ax[1].set_ylim(1.0 - dev, 1.0 + dev)
+
+    if style.ratio_ticks is not None:
+        ax[1].set_yticks(style.ratio_ticks)
+    if style.ratio_guide_lines is not None:
+        for guide_y in style.ratio_guide_lines:
+            ax[1].axhline(guide_y, c=style.reference_color, ls="--", lw=0.5,
+                          alpha=0.8)
 
     fig.subplots_adjust(left=0.12, right=0.96, top=0.92, bottom=0.10)
 
@@ -788,7 +868,7 @@ def make_summary_plots(summary_config):
             dup(geant_ref),
             label="Geant4",
             linestyle="-",
-            alpha=0.95,
+            alpha=style.reference_alpha,
             linewidth=style.reference_line_width,
             color=style.reference_color,
             where="post",
@@ -823,7 +903,7 @@ def make_summary_plots(summary_config):
                 label=model_name,
                 where="post",
                 linewidth=style.line_width,
-                alpha=0.98,
+                alpha=style.model_alpha,
                 color=color,
                 linestyle=ls,
             )
@@ -856,7 +936,7 @@ def make_summary_plots(summary_config):
                 dup(ratio),
                 where="post",
                 linewidth=style.line_width,
-                alpha=0.98,
+                alpha=style.model_alpha,
                 color=color,
                 linestyle=ls,
             )
@@ -882,14 +962,18 @@ def make_summary_plots(summary_config):
             binning_ref[0],
             binning_ref[-1],
             linewidth=1.0,
-            alpha=0.8,
+            alpha=style.reference_alpha,
             linestyle="-",
             color=style.reference_color,
         )
+        if style.ratio_guide_lines is not None:
+            for guide_y in style.ratio_guide_lines:
+                ax[1].axhline(guide_y, c=style.reference_color, ls="--", lw=0.5, alpha=0.8)
         ax[0].set_xlim(binning_ref[0], binning_ref[-1])
 
         _finish_summary_axes(fig, ax, style, summary_config, feature_name,
-                             len(loaded), ratio_min, ratio_max)
+                             len(loaded), ratio_min, ratio_max,
+                             models_for_ratio_label=loaded)
         _save_summary_fig(fig, summary_config.output_dir, feature_name, style.upper_ylim_headroom)
 
     # --- Profile overlay plots ---
@@ -930,7 +1014,8 @@ def make_summary_plots(summary_config):
 
         # Geant4 reference
         ax[0].step(x, ref_mean, where="mid", color=style.reference_color,
-                   linewidth=style.reference_line_width, alpha=0.95, label="Geant4",
+                   linewidth=style.reference_line_width,
+                   alpha=style.reference_alpha, label="Geant4",
                    linestyle="-")
         ax[0].fill_between(x, ref_mean - ref_sem, ref_mean + ref_sem,
                            alpha=style.reference_band_alpha, color=style.reference_band_color,
@@ -955,8 +1040,8 @@ def make_summary_plots(summary_config):
             gen_sem = payload["gen_sem"]
 
             ax[0].step(x, gen_mean, where="mid", color=color,
-                       linewidth=style.line_width, alpha=0.98, label=model_name,
-                       linestyle=ls)
+                       linewidth=style.line_width, alpha=style.model_alpha,
+                       label=model_name, linestyle=ls)
             if style.model_band_alpha > 0.0:
                 ax[0].fill_between(x, gen_mean - gen_sem, gen_mean + gen_sem,
                                    alpha=style.model_band_alpha, color=color, step="mid")
@@ -966,7 +1051,8 @@ def make_summary_plots(summary_config):
                 ratio_err = np.where(ref_mean > 0, gen_sem / ref_mean, 0.0)
 
             ax[1].step(x, ratio, where="mid", color=color,
-                       linewidth=style.line_width, alpha=0.98, linestyle=ls)
+                       linewidth=style.line_width, alpha=style.model_alpha,
+                       linestyle=ls)
             if style.ratio_band_alpha > 0.0:
                 ax[1].fill_between(x, ratio - ratio_err, ratio + ratio_err,
                                    alpha=style.ratio_band_alpha, color=color, step="mid")

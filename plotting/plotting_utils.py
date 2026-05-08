@@ -70,7 +70,7 @@ def apply_plot_style():
 def add_experiment_label(ax, label="Preliminary", rlabel="Phase-II"):
     """Add the CMS experiment label using mplhep."""
     local_hep = _require_mplhep()
-    local_hep.cms.label(ax=ax, label=label, data=False, rlabel=rlabel)
+    local_hep.cms.label(ax=ax, text=label, data=False, rlabel=rlabel)
 
 
 def dup(a):
