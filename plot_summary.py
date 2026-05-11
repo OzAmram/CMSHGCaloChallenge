@@ -573,7 +573,7 @@ def default_feature_label(feature_name):
     label = label.replace("Energyfraction", "Energy fraction ")
     label = label.replace("LongitudinalProfile", "Longitudinal profile")
     label = label.replace("TransverseProfile", "Transverse profile")
-    label = label.replace("IncidentE", "Incident E")
+    label = label.replace("IncidentEnergy", "Incident energy")
     label = label.replace("ERatio", "E ratio")
     label = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", label)
     label = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
