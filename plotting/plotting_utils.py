@@ -11,12 +11,13 @@ def default_feature_label(feature_name):
     label = label.replace("LongitudinalProfile", "Longitudinal Profile")
     label = label.replace("TransverseProfile", "Transverse Profile")
     label = label.replace("IncidentE", "Incident E")
-    label = label.replace("ERatio", "E Ratio")
+    label = label.replace("ERatio", "E ratio")
     label = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", label)
     label = re.sub(r"([a-z])([A-Z])", r"\1 \2", label)
     label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
     label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
     label = re.sub(r"\s+", " ", label).strip()
+    label = label.replace("Energy Ratio", "Energy ratio")
     # Add units: X/Y center & width are in cm; occupancy is in % (when post-converted)
     name_compact = re.sub(r"\s+", "", feature_name).lower()
     if re.match(r"^[xy](center|width)layer\d+$", name_compact):
@@ -68,9 +69,16 @@ def apply_plot_style():
 
 
 def add_experiment_label(ax, label="Preliminary", rlabel="Phase-II"):
-    """Add the CMS experiment label using mplhep."""
+    """Add the CMS experiment label using mplhep.
+
+    The qualifier kwarg was renamed in newer mplhep (`label` -> `text`),
+    so try both to stay compatible across versions.
+    """
     local_hep = _require_mplhep()
-    local_hep.cms.label(ax=ax, text=label, data=False, rlabel=rlabel)
+    try:
+        local_hep.cms.label(ax=ax, label=label, data=False, rlabel=rlabel)
+    except TypeError:
+        local_hep.cms.label(ax=ax, text=label, data=False, rlabel=rlabel)
 
 
 def dup(a):
