@@ -8,8 +8,8 @@ import utils
 def default_feature_label(feature_name):
     label = feature_name.replace("_", " ")
     label = label.replace("Energyfraction", "Energy fraction ")
-    label = label.replace("LongitudinalProfile", "Longitudinal Profile")
-    label = label.replace("TransverseProfile", "Transverse Profile")
+    label = label.replace("LongitudinalProfile", "Longitudinal profile")
+    label = label.replace("TransverseProfile", "Transverse profile")
     label = label.replace("IncidentE", "Incident E")
     label = label.replace("ERatio", "E ratio")
     label = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", label)
@@ -17,19 +17,26 @@ def default_feature_label(feature_name):
     label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
     label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
     label = re.sub(r"\s+", " ", label).strip()
+    # Sentence-case post-fix
     label = label.replace("Energy Ratio", "Energy ratio")
+    label = label.replace("Energy Fraction", "Energy fraction")
+    label = label.replace("Incident Energy", "Incident energy")
     # Add units: X/Y center & width are in cm; occupancy is in % (when post-converted)
     name_compact = re.sub(r"\s+", "", feature_name).lower()
     if re.match(r"^[xy](center|width)layer\d+$", name_compact):
-        label = re.sub(r"\b([XY]) (Center|Width)\b", r"\1 \2 [cm]", label)
+        label = re.sub(
+            r"\b([XY]) (Center|Width)\b",
+            lambda m: f"{m.group(1)} {m.group(2).lower()} [cm]",
+            label,
+        )
     elif name_compact.startswith("occupancylayer"):
         label = re.sub(r"\bOccupancy\b", "Occupancy [%]", label)
     elif name_compact == "incidentenergy":
         label = label + " [GeV]"
-    # Capitalize trailing "layer N" / "ring N"
+    # Lowercase trailing "Layer N" / "Ring N"
     label = re.sub(
         r"\s*\b([Ll]ayer|[Rr]ing) (\d+)$",
-        lambda m: f" {m.group(1).capitalize()} {m.group(2)}",
+        lambda m: f" {m.group(1).lower()} {m.group(2)}",
         label,
     )
     return label

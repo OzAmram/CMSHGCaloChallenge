@@ -571,8 +571,8 @@ def load_profile_npz(npz_file):
 def default_feature_label(feature_name):
     label = feature_name.replace("_", " ")
     label = label.replace("Energyfraction", "Energy fraction ")
-    label = label.replace("LongitudinalProfile", "Longitudinal Profile")
-    label = label.replace("TransverseProfile", "Transverse Profile")
+    label = label.replace("LongitudinalProfile", "Longitudinal profile")
+    label = label.replace("TransverseProfile", "Transverse profile")
     label = label.replace("IncidentE", "Incident E")
     label = label.replace("ERatio", "E ratio")
     label = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", label)
@@ -580,19 +580,27 @@ def default_feature_label(feature_name):
     label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
     label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
     label = re.sub(r"\s+", " ", label).strip()
+    # Sentence-case post-fix: lowercase common words that came from
+    # camelCase splits and should not be title-cased.
     label = label.replace("Energy Ratio", "Energy ratio")
+    label = label.replace("Energy Fraction", "Energy fraction")
+    label = label.replace("Incident Energy", "Incident energy")
     # Add units: X/Y center & width are in cm; occupancy is in % (post-converted)
     name_lower = feature_name.lower()
     if re.match(r"^[xy](center|width)layer\d+$", name_lower):
-        label = re.sub(r"\b([XY]) (Center|Width)\b", r"\1 \2 [cm]", label)
+        label = re.sub(
+            r"\b([XY]) (Center|Width)\b",
+            lambda m: f"{m.group(1)} {m.group(2).lower()} [cm]",
+            label,
+        )
     elif name_lower.startswith("occupancylayer"):
         label = re.sub(r"\bOccupancy\b", "Occupancy [%]", label)
     elif name_lower == "incidentenergy":
         label = label + " [GeV]"
-    # Capitalize and prepend a comma before "layer N" / "ring N" tail
+    # Prepend a comma before trailing "layer N" / "ring N" (kept lowercase).
     label = re.sub(
         r"\s*\b([Ll]ayer|[Rr]ing) (\d+)$",
-        lambda m: f", {m.group(1).capitalize()} {m.group(2)}",
+        lambda m: f", {m.group(1).lower()} {m.group(2)}",
         label,
     )
     return label
