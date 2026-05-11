@@ -1078,9 +1078,9 @@ def make_summary_plots(summary_config):
                              len(loaded_profiles), ratio_min, ratio_max)
         # Override axis labels for profiles
         if "Longitudinal" in feature_name:
-            ax[1].set_xlabel("Calorimeter Layer", fontsize=style.label_fontsize)
+            ax[1].set_xlabel("Calorimeter layer", fontsize=style.label_fontsize)
         elif "Transverse" in feature_name:
-            ax[1].set_xlabel("Ring Number", fontsize=style.label_fontsize)
+            ax[1].set_xlabel("Ring number", fontsize=style.label_fontsize)
         ax[0].set_ylabel("Avg. energy fraction", fontsize=style.label_fontsize, loc="top")
         _save_summary_fig(fig, summary_config.output_dir, feature_name, style.upper_ylim_headroom)
 
