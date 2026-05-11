@@ -46,11 +46,6 @@ presentation tuning. The default `paper` preset is line-first and intentionally
 less cluttered; `diagnostic` keeps the model uncertainty bands visible.
 The example file can be copied and edited for a real comparison setup.
 
-When using a non-zero EMin value, some voxels will get their energy set to zero for the evaluation. 
-The code automatically rescales the energy of
-other voxels in the layer to preserve the total layer energy.
-To disable this use the `--EMin_no_rescale` flag. 
-
 
 Note that computing all of the features for evaluation takes quite some time
 for the pion datasets. To avoid this significant overhead, the script saves
