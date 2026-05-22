@@ -1,0 +1,30 @@
+{
+  "models": [
+    {
+      "name": "HGCaloDiffusion",
+      "path": "../plots_submissions/CaloDiffusion/Photon_1To1000Gev/"
+    },
+    {
+      "name": "HGCaloDream",
+      "path": "../plots_submissions/CaloDream/Photon_1To1000Gev/"
+    },
+    {
+      "name": "HGCaloTrilogy",
+      "path": "../plots_submissions/HGCaloTrilogy/Photon_1To1000Gev/"
+    },
+    {
+      "name": "AllShowers",
+      "path": "../plots_submissions/AllShowers/Photon_1To1000Gev/"
+    },
+    {
+      "name": "GraphCNF",
+      "path": "../plots_submissions/GraphCNF/Photon_1To1000Gev/"
+    }
+  ],
+  "output_dir": "../plots_summary_submissions/Photon_1To1000Gev/",
+  "data_label": "Photon, 1–1000 GeV",
+  "style": {
+    "preset": "paper"
+  },
+  "geom_file": "../HGCalShowers/geoms/HGCal_geo_2024.pkl"
+}
