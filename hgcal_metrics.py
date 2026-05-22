@@ -473,10 +473,11 @@ def compute_metrics(flags):
             print("Missing data file to plot!")
             exit(1)
         f_sample_list = utils.get_files(flags.generated)
+        nevts_sample = flags.nevts_sample if flags.nevts_sample > 0 else flags.nevts
 
         for f_sample in f_sample_list:
             try:
-                feats, lp, tp = LoadSample( f_sample, flags.EMin, flags.nevts, reprocess=flags.reprocess)
+                feats, lp, tp = LoadSample( f_sample, flags.EMin, nevts_sample, reprocess=flags.reprocess)
                 if(feats_gen is None):
                     feats_gen, long_gen, trans_gen = feats, lp, tp
                 else:
@@ -485,7 +486,14 @@ def compute_metrics(flags):
                     trans_gen = np.concatenate((trans_gen, tp), axis=0)
 
                 total_evts = feats_gen.shape[0]
-                if(flags.nevts > 0 and total_evts >= flags.nevts): break
+                if(nevts_sample > 0 and total_evts >= nevts_sample): 
+                    if(total_evts > nevts_sample): 
+                        # trim to exact number if we went over due to concatenation
+                        feats_gen = feats_gen[:nevts_sample]
+                        long_gen = long_gen[:nevts_sample]
+                        trans_gen = trans_gen[:nevts_sample]
+                        total_evts = nevts_sample
+                    break
             except (OSError, KeyError, ValueError):
                 print("Bad file, skipping")
 
@@ -508,7 +516,12 @@ def compute_metrics(flags):
             trans_geant = np.concatenate((trans_geant, tp), axis=0)
 
         total_evts = feats_geant.shape[0]
-        if(flags.nevts > 0 and total_evts >= flags.nevts): break
+        if(flags.nevts > 0 and total_evts >= flags.nevts): 
+            if(total_evts > flags.nevts): 
+                feats_geant = feats_geant[:flags.nevts]
+                long_geant = long_geant[:flags.nevts]
+                trans_geant = trans_geant[:flags.nevts]
+            break
 
     if(feats_geant is None):
         raise RuntimeError("No valid Geant files were loaded from EVAL list.")
@@ -520,6 +533,7 @@ def compute_metrics(flags):
     nan_geant = np.isnan(feats_geant)
     print(f"Number of Infs: Geant4 {np.sum(inf_geant)}, Model {np.sum(inf_gen)}")
     print(f"Number of Nans: Geant4 {np.sum(nan_geant)}, Model {np.sum(nan_gen)}")
+    print("Number of showers: Geant4 %i, Model %i" % (feats_geant.shape[0], feats_gen.shape[0]))
 
     nLayers = shape_plot[1]
     feat_names = get_feat_names(nLayers)
@@ -544,11 +558,11 @@ def compute_metrics(flags):
 
     if(flags.shuffle_labels):
         #randomly shuffle labels, for diff geant-geant bootstraps
-        feats_all = np.concatenate([feats_geant, feats_gen], axis=0)
+        feats_all = np.concatenate([feats_gen, feats_geant], axis=0)
+        n_gen = feats_gen.shape[0]
         np.random.shuffle(feats_all)
-        half_idx = feats_all.shape[0]//2
-        feats_geant = feats_all[:half_idx]
-        feats_gen = feats_all[half_idx:]
+        feats_gen = feats_all[:n_gen]
+        feats_geant = feats_all[n_gen:]
 
 
     do_hists = do_classifier = do_fpd = False
@@ -810,7 +824,9 @@ def compute_metrics(flags):
                 f.write(cls_string)
 
     if(do_fpd):
-        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen)
+        #Larger number of samples than default (50k) found to be more stable, reduced unc
+        max_samples = 200000
+        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen, max_samples=max_samples)
 
         kpd_val, kpd_err = jetnet.evaluation.kpd(feats_cls_geant, feats_cls_gen)
 
@@ -835,6 +851,7 @@ if(__name__ == "__main__"):
     parser.add_argument('--generated', '-g', default='', help='Generated showers')
     parser.add_argument('--config', '-c', default='config_dataset2.json', help='Training parameters')
     parser.add_argument('-n', '--nevts', type=int,default=-1, help='Number of events to load')
+    parser.add_argument('--nevts_sample', type=int,default=-1, help='Number of events to load from generated sample (if different from nevts)')
     parser.add_argument('--EMin', type = float, default=0.00001, help='Voxel min energy (GeV)')
     parser.add_argument('--name', default='Model', help='Model name (for plot labels)')
 
