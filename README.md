@@ -35,6 +35,20 @@ An example usage would be:
 python hgcal_metrics.py -c config_HGCal_pions.json -g datasets/HGCal_central_2024_pions_eval_test.txt -p plots/eval_test/ -d  /uscms_data/d3/oamram/HGCal/HGCal_central_2024_pions/ --mode all --plot --name MyModel
 ```
 
+Note that computing all of the features for evaluation takes quite some time
+for the pion datasets. To avoid this significant overhead, the script saves
+these computed features once for each input file with the same name extended
+with .feat.npz. Subsequent runs will then use these pre-computed features if such
+a file exists. To force a recreation of these files you can use the
+`--reprocess` flag
+
+## Summary Plots
+
+To print a text + LaTeX summary table of all models/datasets:
+```
+python print_summary.py
+```
+
 To overlay histogram summaries from multiple model runs after those per-feature `.npz`
 files have been produced, use:
 ```
@@ -47,13 +61,21 @@ less cluttered; `diagnostic` keeps the model uncertainty bands visible.
 The example file can be copied and edited for a real comparison setup.
 
 
-Note that computing all of the features for evaluation takes quite some time
-for the pion datasets. To avoid this significant overhead, the script saves
-these computed features once for each input file with the same name extended
-with .feat.npz. Subsequent runs will then use these pre-computed features if such
-a file exists. To force a recreation of these files you can use the
-`--reprocess` flag
+
+## Scaling study
 
 
-The evaluation can optionally be done without the inclusion of the occupancy
-features with the `--no_occupancy` flag.
+To reproduce the plots which diagnose the performance of each model is terms of an equivalent
+number of Geant4 samples (in a bias-variance tradeoff formulation), 
+use `run_scaling_study.py`:
+
+```
+python run_scaling_study.py --datasets Photon_E5 Pion_E5    # run + plot
+python run_scaling_study.py --plot_only                     # replot all datasets only
+```
+This runs `run_ks_scaling.py` (repeated Geant4-vs-Geant4 `hgcal_metrics.py`
+comparisons at increasing sample size, cached under `eval_scaling/`) followed
+by `plotting/plot_ks_scaling.py`, which produces one plot per feature category
+into `eval_scaling/plots/`. Pass `--plot_only` to skip the (slow) scaling runs
+and just regenerate plots from existing `eval_scaling/` data, e.g. after
+updating a model's metrics in `eval_results_all/`.

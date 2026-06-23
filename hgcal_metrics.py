@@ -296,14 +296,13 @@ def get_feat_names(nLayers):
 
 
 def compute_profiles(showers, geom, n_rings):
-    """Compute longitudinal and transverse shower profiles."""
+    """Compute longitudinal and transverse shower profiles.
+
+    Callers must pass showers that are already free of non-finite voxels
+    (see the finite-mask filter in LoadSample); this keeps the profile row
+    count identical to that of compute_feats on the same showers.
+    """
     eps = 1e-8
-    # Filter out showers with any NaN voxels
-    finite_mask = np.all(np.isfinite(showers.reshape(showers.shape[0], -1)), axis=1)
-    if not np.all(finite_mask):
-        n_bad = int(np.sum(~finite_mask))
-        print("compute_profiles: dropping %d non-finite showers out of %d" % (n_bad, len(finite_mask)))
-        showers = showers[finite_mask]
 
     E_total = np.sum(showers, axis=(1,2)).reshape(showers.shape[0], 1)
     E_layer = np.sum(showers, axis=(2))
@@ -424,6 +423,15 @@ def compute_metrics(flags):
                 generated = h5f['showers'][:end] * scale_fac
                 energies = h5f['incident_energies'][:end] * scale_fac
 
+        if generated.shape[0] != energies.shape[0]:
+            # Source file itself has mismatched dataset lengths (seen e.g. in one
+            # GraphCNF_v2 Photon_LogUniform file). Truncating would silently pair
+            # showers with the wrong energies if the dropped entry isn't at the
+            # end, so skip the whole file instead (caught by the per-file
+            # exception handler in the caller, same as other bad files).
+            raise ValueError("%s has mismatched showers/energies lengths (%d vs %d)"
+                              % (fname, generated.shape[0], energies.shape[0]))
+
         energies = np.reshape(energies,(-1,1))
         generated = np.reshape(generated,shape_plot)
         if(EMin > 0.): # apply min energy cut on the unreweighted showers, mimicking the fact that we are cutting off the noise and then correct the layers' relative importance a la the weights!
@@ -458,6 +466,17 @@ def compute_metrics(flags):
             return data['feats'], data['long_profile'], data['trans_profile']
         else:
             showers, energies = LoadFile(fname, EMin, flags.nevts)
+            # Drop showers with any non-finite voxels so feats and profiles are
+            # computed on an identical set of showers. compute_profiles used to
+            # filter internally while compute_feats did not, which left their
+            # row counts mismatched and broke the downstream concatenation.
+            finite_mask = np.all(np.isfinite(showers.reshape(showers.shape[0], -1)), axis=1)
+            if not np.all(finite_mask):
+                n_bad = int(np.sum(~finite_mask))
+                print("LoadSample: dropping %d non-finite showers out of %d in %s"
+                      % (n_bad, len(finite_mask), fname))
+                showers = showers[finite_mask]
+                energies = energies[finite_mask]
             feats = compute_feats(showers, energies, geom)
             long_profile, trans_profile = compute_profiles(showers, geom, nRings)
             try:
@@ -757,13 +776,21 @@ def compute_metrics(flags):
     feats_cls_gen = np.concatenate((feats_gen, long_gen, trans_gen), axis=1)
     feats_cls_geant = np.concatenate((feats_geant, long_geant, trans_geant), axis=1)
 
-    # Remove showers with NaN features before classifier/FPD
-    nan_mask_gen   = np.any(np.isnan(feats_cls_gen),   axis=1)
-    nan_mask_geant = np.any(np.isnan(feats_cls_geant), axis=1)
-    if nan_mask_gen.any() or nan_mask_geant.any():
-        print(f"Removing {nan_mask_gen.sum()} generated and {nan_mask_geant.sum()} Geant4 showers with NaN features before classifier/FPD")
-        feats_cls_gen   = feats_cls_gen[~nan_mask_gen]
-        feats_cls_geant = feats_cls_geant[~nan_mask_geant]
+    # Remove showers with non-finite (NaN or inf) or absurdly-large features before
+    # classifier/FPD. inf arises from overflow in feature computation (e.g.
+    # energies*coord^power in utils.py) on finite-but-huge voxels, which np.isnan
+    # would miss but the downstream StandardScaler rejects. Some generative models
+    # occasionally emit a pathological/diverged shower whose features are still
+    # finite (e.g. ~1e6-1e36) but swamp the FPD covariance estimate, producing NaNs
+    # inside jetnet's curve_fit; a generous magnitude cutoff catches these too since
+    # no legitimate feature value approaches it.
+    FEATURE_ABS_MAX = 1e4
+    bad_mask_gen   = np.any(~np.isfinite(feats_cls_gen)   | (np.abs(feats_cls_gen)   > FEATURE_ABS_MAX), axis=1)
+    bad_mask_geant = np.any(~np.isfinite(feats_cls_geant) | (np.abs(feats_cls_geant) > FEATURE_ABS_MAX), axis=1)
+    if bad_mask_gen.any() or bad_mask_geant.any():
+        print(f"Removing {bad_mask_gen.sum()} generated and {bad_mask_geant.sum()} Geant4 showers with non-finite/extreme features before classifier/FPD")
+        feats_cls_gen   = feats_cls_gen[~bad_mask_gen]
+        feats_cls_geant = feats_cls_geant[~bad_mask_geant]
 
     # Optionally truncate per-layer features at MAX_LAYER_EVAL (all metrics)
     if max_layer_eval is not None:

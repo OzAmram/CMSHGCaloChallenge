@@ -117,6 +117,7 @@ class SummaryPlotConfig(object):
         data_label="",
         style=None,
         geom_file=None,
+        layer_filter=None,
     ):
         self.models = models
         self.output_dir = output_dir
@@ -125,6 +126,7 @@ class SummaryPlotConfig(object):
         self.data_label = data_label
         self.style = style or SummaryStyleConfig()
         self.geom_file = geom_file
+        self.layer_filter = layer_filter
 
 
 class SummaryStyleConfig(object):
@@ -415,6 +417,8 @@ def load_summary_plot_config(config_path):
     geom_file = None
     if geom_file_raw:
         geom_file = _resolve_relative_path(config_dir, str(geom_file_raw).strip())
+    layer_filter_raw = payload.get("layer_filter")
+    layer_filter = int(layer_filter_raw) if layer_filter_raw is not None else None
     return SummaryPlotConfig(
         models=models,
         output_dir=output_dir,
@@ -423,6 +427,7 @@ def load_summary_plot_config(config_path):
         data_label=data_label,
         style=style,
         geom_file=geom_file,
+        layer_filter=layer_filter,
     )
 
 
@@ -502,6 +507,19 @@ def resolve_summary_npz_files(path_spec):
 
 
 _OCCUPANCY_RE = re.compile(r"^OccupancyLayer(\d+)$", re.IGNORECASE)
+_PER_LAYER_RE = re.compile(r"^.*layer(\d+)$", re.IGNORECASE)
+
+
+def _filter_to_layer(feature_names, layer_filter):
+    """Drop per-layer features (e.g. EnergyfractionlayerN) not matching layer_filter."""
+    if layer_filter is None:
+        return feature_names
+    kept = []
+    for feature_name in feature_names:
+        match = _PER_LAYER_RE.match(feature_name)
+        if match is None or int(match.group(1)) == layer_filter:
+            kept.append(feature_name)
+    return kept
 
 
 def _load_layer_ncells(geom_file):
@@ -784,6 +802,7 @@ def make_summary_plots(summary_config):
     common_features = sorted(
         set.intersection(*(set(feature_map.keys()) for feature_map in model_feature_files.values()))
     )
+    common_features = _filter_to_layer(common_features, summary_config.layer_filter)
     if len(common_features) == 0:
         raise ValueError("No common feature names found across summary plot inputs.")
 
