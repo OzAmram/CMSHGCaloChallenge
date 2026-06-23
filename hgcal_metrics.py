@@ -833,12 +833,20 @@ def compute_metrics(flags):
     if(do_fpd):
         #Larger number of samples than default (50k) found to be more stable, reduced unc
         max_samples = 200000
-        fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen, max_samples=max_samples)
+        if(flags.fpd_trim > 0):
+            # Optional NLL-trim, robust to the heavy-tailed-feature
+            # instability of vanilla FPD on HGCal showers (see fpd_trim.py).
+            from fpd_trim import fpd_trimmed_intercept
+            fpd_val, fpd_err = fpd_trimmed_intercept(feats_cls_geant, feats_cls_gen, trim_pct=flags.fpd_trim)
+            fpd_tag = " [NLL-trim %g%%]" % (flags.fpd_trim * 100)
+        else:
+            fpd_val, fpd_err = jetnet.evaluation.fpd(feats_cls_geant, feats_cls_gen, max_samples=max_samples)
+            fpd_tag = ""
 
         kpd_val, kpd_err = jetnet.evaluation.kpd(feats_cls_geant, feats_cls_gen)
 
         fpd_result_str = (
-                f"FPD: {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f} x 10^-3\n" 
+                f"FPD{fpd_tag}: {fpd_val*1e3:.4f} ± {fpd_err*1e3:.4f} x 10^-3\n" 
                 f"KPD: {kpd_val*1e3:.4f} ± {kpd_err*1e3:.4f} x 10^-3\n"
             )
         print(fpd_result_str)
@@ -877,6 +885,10 @@ if(__name__ == "__main__"):
     parser.add_argument('--reprocess', action='store_true', default=False,help='Recompute features for eval')
     parser.add_argument('--no_occupancy', action='store_true', default=False,help='Dont include occupancy feature')
     parser.add_argument('-m', '--mode', default='all', help='Which eval metrics to run. Options : hist, cls, fpd, all (default)')
+    parser.add_argument('--fpd_trim', type=float, default=0.0,
+                        help="Optional NLL-trim fraction for FPD: drop the top-Mahalanobis fraction of events per batch "
+                             "under each sample's own MLE Gaussian, then run jetnet's Chong-Forsyth 1/N extrapolation "
+                             "(see fpd_trim.py). Default 0 = vanilla jetnet FPD; e.g. 0.01 trims 1%%.")
     parser.add_argument('--apply_layer_weights', action='store_true', default=True,
                         help='Apply per-layer weights loaded from JSON before feature extraction (default key: weightsPerLayer_V16). On by default.')
     parser.add_argument('--no_layer_weights', action='store_false', dest='apply_layer_weights',
