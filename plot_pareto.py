@@ -144,10 +144,9 @@ def plot_pareto(x_vals: dict, x_errs: dict, x_label: str,
         model_metrics = metrics.get(model, {}).get(dataset_key, {})
 
         if metric == "AUC":
-            raw = model_metrics.get("AUC")
-            if raw is None:
+            y_val = model_metrics.get("AUC")
+            if y_val is None:
                 continue
-            y_val = abs(raw - 0.5)
             y_err = None
         elif metric == "FPD":
             y_val = model_metrics.get("FPD")
@@ -199,7 +198,7 @@ def plot_pareto(x_vals: dict, x_errs: dict, x_label: str,
     ax.set_xlabel(x_label, fontsize=24)
 
     if metric == "AUC":
-        ax.set_ylabel(r"AUC $-$ 0.5", fontsize=24)
+        ax.set_ylabel("AUC", fontsize=24)
     elif metric == "FPD":
         ax.set_yscale("log")
         ax.set_ylabel(r"FPD ($\times 10^{-3}$)", fontsize=24)
