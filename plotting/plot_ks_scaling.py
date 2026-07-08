@@ -22,7 +22,7 @@ except ImportError:
 SCALING     = REPO / "eval_scaling"
 RESULTS_ALL = REPO / "eval_results_all"
 CATS        = ["Energy", "Transverse", "Center", "Width", "Occupancy", "all"]
-CAT_LABELS  = {"all": "All"}   # overrides for display/filenames; others use cat as-is
+CAT_LABELS  = {"all": "All", "Energy": "Longitudinal"}   # overrides for display/filenames; others use cat as-is
 
 # display name -> directory name(s) in eval_results_all, tried in order;
 # first one with a metrics.txt for the requested dataset wins. This lets a
@@ -30,11 +30,11 @@ CAT_LABELS  = {"all": "All"}   # overrides for display/filenames; others use cat
 # haven't been re-run under the new directory yet.
 MODELS = {
     "HGCaloDiffusion": ["CaloDiffusion"],
-    "CaloDream":       ["CaloDream_v3", "CaloDream"],
+    "HGCaloDream":     ["CaloDream_v3", "CaloDream"],
     "HGCaloTrilogy":   ["GLAM"],
     "GraphCNF":        ["GraphCNF_v2", "GraphCNF"],
     "AllShowers":      ["Thorsten"],
-    "CaloDiT":         ["CaloDiT"],
+    "CaloDiT-2":       ["CaloDiT"],
 }
 MODEL_COLORS = CMS_COLORS
 
@@ -281,6 +281,9 @@ def make_panel(cat, metric_key_prefix, metric_label, flags, rows, ns, n_train):
     n_min_curve = x_lo
     n_max_curve = float(ns[mask].max()) if mask.any() else 1
 
+    # Amplification factor denominator: training showers near target energy (if counted)
+    n_train_ref = list(n_train.values())[0] if n_train else None
+
     offchart_handles = []   # (proxy_handle, label) for models off the measured curve
     for (name, val), color in zip(model_vals.items(), MODEL_COLORS):
         n_eq, status = equiv_n(ns, curve, val)
@@ -288,8 +291,13 @@ def make_panel(cat, metric_key_prefix, metric_label, flags, rows, ns, n_train):
 
         if status == "ok":
             hline_ys.append(y_val)
+            if n_train_ref:
+                amp = n_eq / n_train_ref
+                lbl = f"{name} ({n_eq:,.0f}, ×{amp:.1f})"
+            else:
+                lbl = f"{name} ({n_eq:,.0f})"
             ax.vlines(n_eq, ymin=y_floor, ymax=y_val, color=color, linestyle="--",
-                      linewidth=1.5, label=f"{name} ({n_eq:,.0f})")
+                      linewidth=1.5, label=lbl)
             ax.hlines(y_val, xmin=x_lo, xmax=n_eq, color=color, linestyle="--",
                       linewidth=1.5)
             vline_xs.append(n_eq)
@@ -297,8 +305,12 @@ def make_panel(cat, metric_key_prefix, metric_label, flags, rows, ns, n_train):
             # Model outperforms the entire measured curve — legend-only, no line drawn
             # (avoids dragging the y-range out to fit an off-chart outlier)
             print(f"  [{cat}] {name}: {metric_label}={val:.3e} — better than curve (>{n_max_curve:,.0f})")
-            offchart_handles.append((plt.Line2D([], [], color=color, linestyle="--", linewidth=1.5),
-                                      f"{name} (>{n_max_curve:,.0f})"))
+            if n_train_ref:
+                amp = n_max_curve / n_train_ref
+                lbl = f"{name} (>{n_max_curve:,.0f}, ×{amp:.1f})"
+            else:
+                lbl = f"{name} (>{n_max_curve:,.0f})"
+            offchart_handles.append((plt.Line2D([], [], color=color, linestyle="--", linewidth=1.5), lbl))
         else:  # above_max
             # Model underperforms even the smallest sample size — legend-only, no line drawn
             print(f"  [{cat}] {name}: {metric_label}={val:.3e} — worse than curve (<{n_min_curve:,.0f})")

@@ -29,25 +29,33 @@ except ImportError:
     hep = None
 
 
-PHOTON_CONFIG = "config_HGCal_photons.json"
-PION_CONFIG = "config_HGCal_pions.json"
+PHOTON_CONFIG = "configs/config_HGCal_photons.json"
+PION_CONFIG = "configs/config_HGCal_pions.json"
 DATA_BASE = "/eos/cms/store/group/offcomp-sim/HGCal_Sim_Samples_2024"
 
-# Per-particle list of (display_name, file_list_path) pairs. The first .h5 in
-# each list is used. Keep the ordering aligned with the summary plot configs.
+# Maps --energy_label values to the suffix used in datasets/generated/ filenames.
+_LABEL_TO_SUFFIX = {
+    "5": "E5", "50": "E50", "500": "E500",
+    "1To1000": "LogUniform",
+}
+
+# Per-particle list of (display_name, dir_name) pairs. The dir_name is used to
+# build the file list path: datasets/generated/{dir_name}_{Particle}_{suffix}.txt
 MODEL_REGISTRY = {
     "Photon": [
-        ("HGCaloDiffusion", "calodiffusion_photon_1To1000_files.txt"),
-        ("CaloDream",       "calodream_photon_1To1000_files.txt"),
-        ("HGCaloTrilogy",   "hgcalotrilogy_photon_1To1000_files.txt"),
-        ("AllShowers",      "thorsten_photon_1To1000_files.txt"),
-        ("GraphCNF",        "graphcnf_photon_1To1000_files.txt"),
+        ("HGCaloDiffusion", "CaloDiffusion"),
+        ("HGCaloDream",     "CaloDream"),
+        ("HGCaloTrilogy",   "GLAM"),
+        ("AllShowers",      "Thorsten"),
+        ("GraphCNF",        "GraphCNF_v2"),
+        ("CaloDiT-2",       "CaloDiT"),
     ],
     "Pion": [
-        ("HGCaloDiffusion", "calodiffusion_pion_1To1000_files.txt"),
-        ("CaloDream",       "calodream_pion_1To1000_files.txt"),
-        ("HGCaloTrilogy",   "hgcalotrilogy_pion_1To1000_files.txt"),
-        ("AllShowers",      "thorsten_pion_1To1000_files.txt"),
+        ("HGCaloDiffusion", "CaloDiffusion"),
+        ("HGCaloDream",     "CaloDream"),
+        ("HGCaloTrilogy",   "GLAM"),
+        ("AllShowers",      "Thorsten"),
+        ("GraphCNF",        "GraphCNF_v2"),
     ],
 }
 
@@ -70,6 +78,49 @@ def _first_path_in_list(list_path):
             if line and not line.startswith("#"):
                 return line
     return None
+
+
+def _all_paths_in_list(list_path):
+    """Return all h5 paths from a file list."""
+    if not os.path.isfile(list_path):
+        return []
+    paths = []
+    with open(list_path) as h:
+        for line in h:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                paths.append(line)
+    return paths
+
+
+def _load_avg_shower(h5_paths, max_cells, shape, n_avg, chunk=500):
+    """Accumulate the mean of up to n_avg showers using a running sum (O(1) memory)."""
+    running_sum = np.zeros((shape[1], max_cells), dtype=np.float64)
+    n_loaded = 0
+    for path in h5_paths:
+        if n_loaded >= n_avg:
+            break
+        if not os.path.isfile(path):
+            continue
+        try:
+            with h5py.File(path, "r") as h5f:
+                ds = h5f["showers"]
+                n_file = ds.shape[0]
+                c = min(max_cells, ds.shape[2])
+                i = 0
+                while i < n_file and n_loaded < n_avg:
+                    n_chunk = min(chunk, n_file - i, n_avg - n_loaded)
+                    raw = np.array(ds[i:i + n_chunk, :, :c], dtype=np.float32)
+                    batch = np.zeros((n_chunk, shape[1], max_cells), dtype=np.float32)
+                    batch[:, :, :c] = raw
+                    running_sum += batch.sum(axis=0)
+                    n_loaded += n_chunk
+                    i += n_chunk
+        except Exception as e:
+            print(f"  WARNING loading {path}: {e}")
+    if n_loaded == 0:
+        return None, 0
+    return (running_sum / n_loaded).astype(np.float32), n_loaded
 
 
 def _pick_events_by_energy(h5_path, max_cells, shape, target_e, n_events=1,
@@ -129,7 +180,7 @@ def _shared_norm(shower_arrays, e_floor=1e-3):
 
 
 def _scatter_shower(ax, shower, geom, norm, layer_spacing=2.0, e_min=1e-4,
-                    cmap_name="inferno"):
+                    cmap_name="plasma"):
     n_layers, n_cells = shower.shape
     n_cells = min(n_cells, geom.xmap.shape[1])
     xs, ys, zs, es = [], [], [], []
@@ -168,6 +219,10 @@ def _format_axes(ax, n_layers, layer_spacing=2.0, xy_limit=None):
         ax.set_xlim(-xy_limit, xy_limit)
         ax.set_ylim(-xy_limit, xy_limit)
     ax.view_init(elev=18, azim=-65)
+    # Transparent panes so cell colors aren't washed out by gray backgrounds
+    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+        pane.fill = False
+        pane.set_edgecolor("lightgray")
 
 
 def _load_layer_weights(layer_weights_file, layer_weights_key, n_layers):
@@ -185,6 +240,7 @@ def _load_layer_weights(layer_weights_file, layer_weights_key, n_layers):
 def make_multi_model_event_display(
     particle, output_dir, target_energy=200.0,
     energy_label="1To1000", n_events=1,
+    models_filter=None, n_avg=0,
     layer_weights_file="HGCalRecHit_layer_weights.json",
     layer_weights_key="weightsPerLayer_V16",
 ):
@@ -216,12 +272,17 @@ def make_multi_model_event_display(
     print(f"Geant4: target {target_energy:.0f} GeV -> "
           f"{len(geant_picks)} events ({g_files[0]})")
 
+    suffix = _LABEL_TO_SUFFIX.get(energy_label, energy_label)
     model_picks = []
-    for display_name, list_name in MODEL_REGISTRY[particle]:
-        list_path = os.path.join(os.path.dirname(__file__), list_name)
+    for display_name, dir_name in MODEL_REGISTRY[particle]:
+        if models_filter is not None and display_name not in models_filter:
+            continue
+        list_path = os.path.join(os.path.dirname(__file__),
+                                 "datasets", "generated",
+                                 f"{dir_name}_{particle}_{suffix}.txt")
         h5_path = _first_path_in_list(list_path)
         if not h5_path or not os.path.isfile(h5_path):
-            print(f"  skip {display_name}: file list missing or empty ({list_name})")
+            print(f"  skip {display_name}: file list missing or empty ({list_path})")
             continue
         try:
             picks = _pick_events_by_energy(h5_path, max_cells, shape,
@@ -263,6 +324,7 @@ def make_multi_model_event_display(
             n_layers, xy_limit, output_dir,
             f"{particle.lower()}_3d_{energy_label}GeV_all_models"
             f"_E{int(target_energy)}{slot_tag}",
+            subtitle=f"{particle}, {target_energy:.0f} GeV",
         )
         saved_paths.append(multi_base)
 
@@ -275,19 +337,73 @@ def make_multi_model_event_display(
                 f"{particle.lower()}_{_safe_label(source_label)}{slot_tag}",
             )
             saved_paths.append(indiv_base)
+
+    # Average shower visualization
+    if n_avg > 0:
+        g_all_paths = [os.path.join(g_dir, f) for f in g_files]
+        g_avg, g_n = _load_avg_shower(g_all_paths, max_cells, shape, n_avg)
+        if g_avg is None:
+            print("  WARNING: could not load Geant4 showers for average")
+        else:
+            print(f"Geant4 average: {g_n} showers loaded")
+            avg_panels = [("Geant4", g_avg * weights_b, target_energy)]
+
+            for display_name, dir_name in MODEL_REGISTRY[particle]:
+                if models_filter is not None and display_name not in models_filter:
+                    continue
+                list_path = os.path.join(os.path.dirname(__file__),
+                                         "datasets", "generated",
+                                         f"{dir_name}_{particle}_{suffix}.txt")
+                all_paths = [p for p in _all_paths_in_list(list_path)
+                             if os.path.isfile(p)]
+                if not all_paths:
+                    print(f"  skip {display_name} avg: no valid files in {list_path}")
+                    continue
+                avg, n_loaded = _load_avg_shower(all_paths, max_cells, shape, n_avg)
+                if avg is None:
+                    print(f"  skip {display_name} avg: could not load showers")
+                    continue
+                print(f"{display_name} average: {n_loaded} showers loaded")
+                avg_panels.append((display_name, avg * weights_b, target_energy))
+
+            avg_norm = _shared_norm([p[1] for p in avg_panels], e_floor=1e-3)
+
+            multi_avg_base = _save_multi_panel(
+                avg_panels, geom, avg_norm, particle, target_energy, 0, 1,
+                n_layers, xy_limit, output_dir,
+                f"{particle.lower()}_3d_{energy_label}GeV_all_models"
+                f"_E{int(target_energy)}_avg{n_avg}",
+                subtitle=f"{particle}, {target_energy:.0f} GeV\n(avg. {n_avg} showers)",
+            )
+            saved_paths.append(multi_avg_base)
+
+            for source_label, shower, ev_E in avg_panels:
+                indiv_base = _save_single_panel(
+                    source_label, shower, ev_E, geom, avg_norm,
+                    particle, target_energy, 0, 1, n_layers,
+                    xy_limit, indiv_dir,
+                    f"{particle.lower()}_{_safe_label(source_label)}",
+                )
+                saved_paths.append(indiv_base)
+
     return saved_paths
 
 
 def _save_multi_panel(panels, geom, norm, particle, target_energy, slot,
-                     n_events, n_layers, xy_limit, output_dir, basename):
+                     n_events, n_layers, xy_limit, output_dir, basename,
+                     subtitle=None):
     """Multi-panel comparison figure with CMS label header."""
+    import math
     n = len(panels)
     if n <= 3:
         rows, cols = 1, n
     elif n <= 4:
         rows, cols = 2, 2
-    else:
+    elif n <= 6:
         rows, cols = 2, 3
+    else:
+        cols = 4
+        rows = math.ceil(n / cols)
 
     fig = plt.figure(figsize=(6.0 * cols, 5.5 * rows + 0.7))
     fig.subplots_adjust(left=0.03, right=0.92, top=0.82, bottom=0.04,
@@ -302,11 +418,9 @@ def _save_multi_panel(panels, geom, norm, particle, target_energy, slot,
         hep.cms.label(ax=ax_label, label="Preliminary",
                       data=False, rlabel="Phase-II", fontsize=22)
 
-    sample_tag = "" if n_events == 1 else f", sample {slot + 1}/{n_events}"
-    fig.text(0.5, 0.87,
-             f"{particle}, target ~{target_energy:.0f} GeV "
-             f"(variable-E dataset{sample_tag})",
-             fontsize=14, ha="center", color="#333333")
+    if subtitle is None:
+        subtitle = f"{particle}, {target_energy:.0f} GeV"
+    fig.text(0.5, 0.87, subtitle, fontsize=14, ha="center", color="#333333")
 
     last_sc = None
     axes_3d = []
@@ -315,8 +429,7 @@ def _save_multi_panel(panels, geom, norm, particle, target_energy, slot,
         sc = _scatter_shower(ax, shower, geom, norm)
         last_sc = sc if sc is not None else last_sc
         _format_axes(ax, n_layers, xy_limit=xy_limit)
-        ev_str = f"{ev_E:.1f}" if ev_E is not None else "?"
-        ax.set_title(f"{label} — {ev_str} GeV", fontsize=13, pad=4)
+        ax.set_title(label, fontsize=13, pad=4)
         axes_3d.append(ax)
 
     if last_sc is not None:
@@ -379,13 +492,7 @@ def _save_single_panel(source_label, shower, ev_E, geom, norm,
         cbar.set_label("Cell energy [MeV]", fontsize=13)
         cbar.ax.tick_params(labelsize=11)
 
-    ev_str = f"{ev_E:.1f}" if ev_E is not None else "?"
-    sample_tag = "" if n_events == 1 else f", sample {slot + 1}/{n_events}"
-    ax.set_title(
-        f"{source_label} — {particle}, {ev_str} GeV"
-        f"{sample_tag}",
-        fontsize=15, pad=8,
-    )
+    ax.set_title(source_label, fontsize=15, pad=8)
 
     base = os.path.join(output_dir, basename)
     fig.savefig(base + ".png", dpi=200, bbox_inches="tight")
@@ -427,6 +534,13 @@ def main():
                         help="Number of events to render per target energy "
                              "(default 3 — different figures showing the i-th "
                              "closest event to target_E from each source)")
+    parser.add_argument("--models", nargs="+", default=None,
+                        help="Subset of model display names to render "
+                             "(e.g. HGCaloDiffusion HGCaloDream). "
+                             "Geant4 is always included.")
+    parser.add_argument("--n_avg", type=int, default=0,
+                        help="If >0, also render the mean of this many showers "
+                             "per source as a separate figure (default: 0 = off).")
     args = parser.parse_args()
 
     if args.targets:
@@ -445,6 +559,8 @@ def main():
             target_energy=target_e,
             energy_label=args.energy_label,
             n_events=args.n_events,
+            models_filter=args.models,
+            n_avg=args.n_avg,
         )
 
 
