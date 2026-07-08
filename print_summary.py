@@ -13,12 +13,12 @@ RESULTS_ALL = REPO / "eval_results_all"
 # directory be upgraded (e.g. "_v2") without losing datasets that haven't
 # been re-run under the new directory yet.
 MODELS = {
-    "HGCaloDiffusion": ["CaloDiffusion"],
-    "HGCaloDream":     ["CaloDream_v3", "CaloDream"],
-    "HGCaloTrilogy":   ["GLAM"],
-    "GraphCNF":        ["GraphCNF_v2", "GraphCNF"],
-    "AllShowers":      ["Thorsten"],
-    "CaloDiT-2":       ["CaloDiT"],
+    "HGCaloDiffusion": ["HGCaloDiffusion"],
+    "HGCaloDream":     ["HGCaloDream"],
+    "HGCaloTrilogy":   ["HGCaloTrilogy"],
+    "GraphCNF":        ["GraphCNF"],
+    "AllShowers":      ["AllShowers"],
+    "CaloDiT-2":       ["CaloDiT-2"],
     "Geant4":          ["Geant4"],
 }
 # Reference models are shown in tables but excluded from best-value bolding

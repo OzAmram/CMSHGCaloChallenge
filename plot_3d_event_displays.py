@@ -43,19 +43,19 @@ _LABEL_TO_SUFFIX = {
 # build the file list path: datasets/generated/{dir_name}_{Particle}_{suffix}.txt
 MODEL_REGISTRY = {
     "Photon": [
-        ("HGCaloDiffusion", "CaloDiffusion"),
-        ("HGCaloDream",     "CaloDream"),
-        ("HGCaloTrilogy",   "GLAM"),
-        ("AllShowers",      "Thorsten"),
-        ("GraphCNF",        "GraphCNF_v2"),
-        ("CaloDiT-2",       "CaloDiT"),
+        ("HGCaloDiffusion", "HGCaloDiffusion"),
+        ("HGCaloDream",     "HGCaloDream"),
+        ("HGCaloTrilogy",   "HGCaloTrilogy"),
+        ("AllShowers",      "AllShowers"),
+        ("GraphCNF",        "GraphCNF"),
+        ("CaloDiT-2",       "CaloDiT-2"),
     ],
     "Pion": [
-        ("HGCaloDiffusion", "CaloDiffusion"),
-        ("HGCaloDream",     "CaloDream"),
-        ("HGCaloTrilogy",   "GLAM"),
-        ("AllShowers",      "Thorsten"),
-        ("GraphCNF",        "GraphCNF_v2"),
+        ("HGCaloDiffusion", "HGCaloDiffusion"),
+        ("HGCaloDream",     "HGCaloDream"),
+        ("HGCaloTrilogy",   "HGCaloTrilogy"),
+        ("AllShowers",      "AllShowers"),
+        ("GraphCNF",        "GraphCNF"),
     ],
 }
 

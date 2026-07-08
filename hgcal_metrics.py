@@ -425,7 +425,7 @@ def compute_metrics(flags):
 
         if generated.shape[0] != energies.shape[0]:
             # Source file itself has mismatched dataset lengths (seen e.g. in one
-            # GraphCNF_v2 Photon_LogUniform file). Truncating would silently pair
+            # GraphCNF Photon_LogUniform file). Truncating would silently pair
             # showers with the wrong energies if the dropped entry isn't at the
             # end, so skip the whole file instead (caught by the per-file
             # exception handler in the caller, same as other bad files).

@@ -6,27 +6,27 @@
   "models": [
     {
       "name": "HGCaloDiffusion",
-      "path": "../eval_results_all/CaloDiffusion/Photon_LogUniform/hist"
+      "path": "../eval_results_all/HGCaloDiffusion/Photon_LogUniform/hist"
     },
     {
       "name": "HGCaloDream",
-      "path": "../eval_results_all/CaloDream/Photon_LogUniform/hist"
+      "path": "../eval_results_all/HGCaloDream/Photon_LogUniform/hist"
     },
     {
       "name": "HGCaloTrilogy",
-      "path": "../eval_results_all/GLAM/Photon_LogUniform/hist"
+      "path": "../eval_results_all/HGCaloTrilogy/Photon_LogUniform/hist"
     },
     {
       "name": "GraphCNF",
-      "path": "../eval_results_all/GraphCNF_v2/Photon_LogUniform/hist"
+      "path": "../eval_results_all/GraphCNF/Photon_LogUniform/hist"
     },
     {
       "name": "AllShowers",
-      "path": "../eval_results_all/Thorsten/Photon_LogUniform/hist"
+      "path": "../eval_results_all/AllShowers/Photon_LogUniform/hist"
     },
     {
       "name": "CaloDiT-2",
-      "path": "../eval_results_all/CaloDiT/Photon_LogUniform/hist"
+      "path": "../eval_results_all/CaloDiT-2/Photon_LogUniform/hist"
     }
   ]
 }

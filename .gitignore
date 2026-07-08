@@ -25,8 +25,8 @@ eval_results_all/**/sep_power.txt
 eval_results/
 eval_results_all/CaloDiffusion_april1/
 eval_results_all/CaloDream_v3/
-eval_results_all/CaloDream/Photon_LogUniform_test/
-eval_results_all/GLAM/Photon_LogUniform_v2/
+eval_results_all/HGCaloDream/Photon_LogUniform_test/
+eval_results_all/HGCaloTrilogy/Photon_LogUniform_v2/
 eval_results_all/GraphCNF/
 eval_results_all/Geant4/
 
