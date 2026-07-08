@@ -393,20 +393,6 @@ def plot_compare(compare, timing, out, part_type, flops=True, iter_scaled=False,
 
         ax.set_xlabel("FLOPs" if flops else "#Parameters", fontsize=24, labelpad=25)
 
-        ax.annotate(
-            "Better",
-            xy=(0.08, 0.07), xycoords="axes fraction",
-            xytext=(0.22, 0.19), textcoords="axes fraction",
-            fontsize=17, fontweight="bold", color="dimgray",
-            ha="center", va="center",
-            arrowprops=dict(
-                arrowstyle="-|>",
-                color="dimgray",
-                lw=3,
-                mutation_scale=28,
-            ),
-        )
-
         plt.tight_layout()
         _extend_axes_for_legend(ax, fig, xs, ys)
         out_path = str(out).replace(".pdf", f"{energy}GeV.pdf")
