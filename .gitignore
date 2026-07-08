@@ -4,6 +4,9 @@ __pycache__/
 *.pyo
 *.un~
 
+# IDE
+.vscode/
+
 # Generated plots (regenerate with plot scripts)
 plots/
 profiling_plots/
@@ -15,10 +18,36 @@ eval_results_all/**/*.pdf
 # Ignore raw feature .npz files but keep hist/*.npz (needed by plot_summary.py)
 eval_results_all/**/*.npz
 !eval_results_all/**/hist/*.npz
+# Individual text result files (summarised in metrics_summary.json)
+eval_results_all/**/metrics.txt
+eval_results_all/**/sep_power.txt
+# Stale/scratch model run directories
+eval_results/
+eval_results_all/CaloDiffusion_april1/
+eval_results_all/CaloDream_v3/
+eval_results_all/CaloDream/Photon_LogUniform_test/
+eval_results_all/GLAM/Photon_LogUniform_v2/
+eval_results_all/GraphCNF/
+eval_results_all/Geant4/
 
-# KS scaling raw per-n subdirectories (large, regenerable from EOS)
+# KS scaling: individual CSVs/counts summarised in ks_scaling_all.json
+eval_scaling/ks_scaling_*.csv
+eval_scaling/train_counts_*.txt
+# Raw per-n subdirectories (large, regenerable from EOS)
 eval_scaling/Photon_*/
 eval_scaling/Pion_*/
+
+# Stale root-level file lists (full lists are in datasets/)
+list_photons_*.txt
+list_pions_*.txt
+photon_files_test.txt
+pion_files_test.txt
+# Old short-path format file lists superseded by datasets/generated/
+datasets/Photon_*.txt
+datasets/Pion_*.txt
+
+# Stale configs dir (replaced by configs/summary_plot_config_*.json)
+summary_configs/
 
 # Development scratch directories
 baseline_test/
@@ -27,6 +56,18 @@ geant_test/
 geant_test_pion/
 test/
 
-# Stale intermediate results
+# Stale intermediate results and personal files
 results_*.txt
 test_*.txt
+oamram.cc
+CLAUDE.md
+
+# Utility/setup scripts not part of the core evaluation workflow
+cernbox_download.py
+compute_energy_resolution.py
+count_showers.py
+count_showers_energy.py
+dataset_copier.py
+split.py
+run_evaluations.sh
+condor/
