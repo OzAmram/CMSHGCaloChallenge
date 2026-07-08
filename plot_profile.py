@@ -306,16 +306,17 @@ def plot_compare(compare, timing, out, part_type, flops=True, iter_scaled=False,
     compare_key = "flops_mean" if flops else "parameters"
     # Plot all points for this particle
 
-    for energy in energies: 
+    for energy in energies:
         fig, ax = plt.subplots(figsize=(10, 8))
 
+        xs, ys = [], []
         for time_profile in timing:
             if time_profile['energy'] != energy:
-                continue 
+                continue
 
             model = time_profile["model"]
 
-            if "AllShower" in model: 
+            if "AllShower" in model:
                 true_name = model.split(" ")[0]
                 color = MODEL_COLORS[true_name]
                 display_compare = [i[compare_key] for i in compare if ("AllShower" in i['model']) and (i['energy']==energy)]
@@ -325,10 +326,10 @@ def plot_compare(compare, timing, out, part_type, flops=True, iter_scaled=False,
                 display_std = [i["flops_range"] for i in compare if ("AllShower" in i['model']) and (i['energy']==energy)]
 
 
-            else: 
+            else:
                 display_compare = [i[compare_key] for i in compare if i['model']==model]
                 display_std = [i["flops_range"] for i in compare if i['model']==model]
-                try: 
+                try:
                     if display_std[0] == display_std[1]:
                         display_std = 0
                 except IndexError:
@@ -336,14 +337,14 @@ def plot_compare(compare, timing, out, part_type, flops=True, iter_scaled=False,
 
                 if len(display_compare) == 0:
                     continue
-            
+
                 if iter_scaled:
                     scale = [i['iterations'] for i in compare if i['model']==model][0]
                     display_compare = [i*scale for i in display_compare]
 
             true_name = model.split(" ")[0]
             color = MODEL_COLORS[true_name]
-            if "CaloTrilogy" in model: 
+            if "CaloTrilogy" in model:
                 model = "HGCaloTrilogy"
 
             ax.errorbar(
@@ -369,6 +370,8 @@ def plot_compare(compare, timing, out, part_type, flops=True, iter_scaled=False,
                 edgecolors='black',
                 linewidths=0.5,
             )
+            xs.extend(display_compare)
+            ys.append(time_profile['time_mean'])
 
         # Add CMS Preliminary and particle labels
         hep.cms.label("Preliminary", ax=ax, data=False, rlabel=f"{part_type} {energy} GeV", loc=0)
@@ -381,20 +384,31 @@ def plot_compare(compare, timing, out, part_type, flops=True, iter_scaled=False,
                     mpatches.Patch(color=color, label=label, ec='black') for label, color
                     in  MODEL_COLORS.items() if label not in ['HGCaloDREAM', 'CaloTrilogy']
                 ]
-        ax.legend(handles=by_label, fontsize=12)
+        ax.legend(handles=by_label, fontsize=16, loc="upper right")
 
-        # Grid
-        ax.grid(True, which="both", linestyle="--", alpha=0.5)
+        if not throughput:
+            ax.set_ylabel("Time/Shower (s), (batch size = 10)", fontsize=24)
+        else:
+            ax.set_ylabel("Shower/Time (1/s), (batch size = 10)", fontsize=24)
 
-        if not throughput: 
+        ax.set_xlabel("FLOPs" if flops else "#Parameters", fontsize=24, labelpad=25)
 
-            ax.set_ylabel("Time/Shower (s), (batch size = 10)", fontsize=20)
-        else: 
-            ax.set_ylabel("Shower/Time (1/s), (batch size = 10)", fontsize=20)
-
-        ax.set_xlabel("FLOPs" if flops else "#Parameters", fontsize=20, labelpad=25)
+        ax.annotate(
+            "Better",
+            xy=(0.08, 0.07), xycoords="axes fraction",
+            xytext=(0.22, 0.19), textcoords="axes fraction",
+            fontsize=17, fontweight="bold", color="dimgray",
+            ha="center", va="center",
+            arrowprops=dict(
+                arrowstyle="-|>",
+                color="dimgray",
+                lw=3,
+                mutation_scale=28,
+            ),
+        )
 
         plt.tight_layout()
+        _extend_axes_for_legend(ax, fig, xs, ys)
         out_path = str(out).replace(".pdf", f"{energy}GeV.pdf")
         plt.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
@@ -475,6 +489,47 @@ def extract_points(data: list[dict]) -> list[dict]:
             "iterations": entry.get("iterations", 1),
         })
     return points
+
+def _extend_axes_for_legend(ax, fig, xs, ys):
+    """Extend the x-axis (log scale) rightward so the upper-right legend
+    does not overlap any plotted (x, y) points."""
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    legend = ax.get_legend()
+    if legend is None:
+        return
+
+    leg_disp = legend.get_window_extent(renderer)
+    ax_disp  = ax.get_window_extent(renderer)
+    leg_x0_frac = (leg_disp.x0 - ax_disp.x0) / ax_disp.width
+    leg_y0_frac = (leg_disp.y0 - ax_disp.y0) / ax_disp.height
+
+    log_xmin, log_xmax = np.log10(ax.get_xlim()[0]), np.log10(ax.get_xlim()[1])
+    ymin, ymax = ax.get_ylim()
+
+    def frac_to_logx(f):
+        return 10 ** (log_xmin + f * (log_xmax - log_xmin))
+
+    if ax.get_yscale() == "log":
+        log_ymin, log_ymax = np.log10(ymin), np.log10(ymax)
+        def frac_to_y(f):
+            return 10 ** (log_ymin + f * (log_ymax - log_ymin))
+    else:
+        def frac_to_y(f):
+            return ymin + f * (ymax - ymin)
+
+    leg_x0_data = frac_to_logx(leg_x0_frac)
+    leg_y0_data = frac_to_y(leg_y0_frac)
+
+    conflict_xs = [x for x, y in zip(xs, ys) if x >= leg_x0_data and y >= leg_y0_data]
+    if not conflict_xs:
+        return
+
+    max_cx = max(conflict_xs)
+    target_frac = leg_x0_frac * 0.95
+    new_log_range = (np.log10(max_cx) - log_xmin) / target_frac
+    ax.set_xlim(10 ** log_xmin, 10 ** (log_xmin + new_log_range))
+
 
 def load_model_data(json_path: Path) -> list[dict]:
     """Load model data from JSON file."""
