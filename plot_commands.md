@@ -103,10 +103,11 @@ python3 plot_profile.py --remove_first_batch # exclude warmup batch
 
 ---
 
-## Pareto plots (quality vs generation time)
+## Pareto plots (quality vs cost)
 
-Scatter plots of shower quality (AUC − 0.5 or FPD) vs per-shower generation time,
-for batch size 1 and batch size 100. Output goes to `profiling_plots/`.
+Scatter plots of shower quality vs generation cost. Three quality metrics
+(AUC, FPD, Sep_all) × four x-axis variants (batch-1 time, batch-100 time,
+parameters, FLOPs). Output goes to `profiling_plots/`.
 
 ```bash
 python3 plot_pareto.py
@@ -116,4 +117,4 @@ Optional flags:
 - `--remove_first_batch` — exclude warmup batch from timing averages
 - `--output_dir DIR`     — override output directory (default: `profiling_plots/`)
 
-Output files: `pareto_{auc|fpd}_{photon|pion}_{N}GeV_batch{1|100}.pdf`
+Output files: `pareto_{auc|fpd|sep_all}_{photon|pion}_{N}GeV_{batch1|batch100|params|flops}.pdf`

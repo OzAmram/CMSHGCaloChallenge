@@ -127,18 +127,34 @@ Input data lives in `timing_inputs/`; outputs go to `profiling_plots/`.
 
 ---
 
-## Pareto plots (quality vs generation time)
+## Pareto plots (quality vs cost)
 
-Scatter plots of shower quality vs per-shower generation time for comparing the
-speed–fidelity tradeoff across models. Quality metrics are AUC − 0.5 (lower =
-closer to Geant4) and FPD. Produced for batch size 1 and batch size 100 at each
-energy and particle type:
+Scatter plots comparing shower quality against generation cost across models.
+Three quality metrics (y-axis) × four cost axes (x-axis) = 12 plot variants,
+produced for all particle and energy combinations:
+
+| Y-axis metric | Description |
+|---|---|
+| `auc`     | AUC − 0.5 (closer to Geant4 → lower) |
+| `fpd`     | Fréchet Physics Distance (log scale) |
+| `sep_all` | Avg. 1D separation power across all features (log scale) |
+
+| X-axis | Filename suffix | Notes |
+|---|---|---|
+| Time/shower (batch 1)   | `_batch1`   | Per-shower latency at batch size 1 |
+| Time/shower (batch 100) | `_batch100`  | Per-shower latency at batch size 100 |
+| Model parameters        | `_params`   | Total trainable parameter count |
+| Model FLOPs             | `_flops`    | From `timing_inputs/model_parameters_flops.json` |
 
 ```bash
 python3 plot_pareto.py
 ```
 
-Outputs: `profiling_plots/pareto_{auc|fpd}_{photon|pion}_{N}GeV_batch{1|100}.pdf`
+Outputs: `profiling_plots/pareto_{metric}_{photon|pion}_{N}GeV_{suffix}.pdf`
+
+Optional flags:
+- `--remove_first_batch` — exclude warmup batch from timing averages
+- `--output_dir DIR`     — override output directory (default: `profiling_plots/`)
 
 ---
 

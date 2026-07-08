@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pareto plots: shower quality vs generation time per model."""
+"""Pareto plots: shower quality vs generation time, parameters, or FLOPs per model."""
 
 import json
 import numpy as np
@@ -34,9 +34,9 @@ def _parse_name(raw: str) -> tuple[str, str]:
     return model, particle
 
 
-def collect_timing(data: list, batch_size: int, remove_first_batch: bool = False) -> list[dict]:
-    """Compute mean per-shower latency (s/shower) for a given batch size."""
-    out = []
+def collect_timing(data: list, batch_size: int, remove_first_batch: bool = False) -> dict:
+    """Return {(model, particle, energy): (x_mean, x_err)} for a given batch size."""
+    out = {}
     for pt in data:
         if pt["batch"] != batch_size:
             continue
@@ -47,14 +47,34 @@ def collect_timing(data: list, batch_size: int, remove_first_batch: bool = False
             times = np.array([v for k, v in pt["timing"].items() if "sample_batch" in k])
 
         model, particle = _parse_name(pt["name"])
-        out.append({
-            "model":     model,
-            "particle":  particle,
-            "energy":    pt["energy"],
-            "time_mean": float(np.mean(times / pt["samples"])),
-            "time_std":  float(np.std(times  / pt["samples"])),
-        })
+        key = (model, particle, pt["energy"])
+        out[key] = (float(np.mean(times / pt["samples"])),
+                    float(np.std(times  / pt["samples"])))
     return out
+
+
+def collect_model_stats(stat_data: list, particle: str, energy: int) -> dict:
+    """Return {model: (params, flops_mean, flops_xerr_lo, flops_xerr_hi)}.
+
+    Energy-dependent entries (AllShowers) are filtered to the requested energy.
+    Models without an energy field match any energy.
+    Variant entries like 'HGCaloTrilogy(N step)' are skipped.
+    """
+    result = {}
+    for entry in stat_data:
+        name = entry.get("model", "")
+        if "(" in name:
+            continue
+        if entry.get("particle") != particle:
+            continue
+        if "energy" in entry and entry["energy"] != energy:
+            continue
+        flops = entry["flops"]
+        mean  = float(np.mean(flops))
+        lo    = mean - float(min(flops))
+        hi    = float(max(flops)) - mean
+        result[name] = (entry["parameters"], mean, lo, hi)
+    return result
 
 
 def _extend_axes_for_legend(ax, fig, xs, ys):
@@ -66,13 +86,11 @@ def _extend_axes_for_legend(ax, fig, xs, ys):
     if legend is None:
         return
 
-    # Legend bbox in axes-fraction coords
     leg_disp = legend.get_window_extent(renderer)
     ax_disp  = ax.get_window_extent(renderer)
     leg_x0_frac = (leg_disp.x0 - ax_disp.x0) / ax_disp.width
     leg_y0_frac = (leg_disp.y0 - ax_disp.y0) / ax_disp.height
 
-    # Current log x limits
     log_xmin, log_xmax = np.log10(ax.get_xlim()[0]), np.log10(ax.get_xlim()[1])
     ymin, ymax = ax.get_ylim()
 
@@ -90,32 +108,29 @@ def _extend_axes_for_legend(ax, fig, xs, ys):
     leg_x0_data = frac_to_logx(leg_x0_frac)
     leg_y0_data = frac_to_y(leg_y0_frac)
 
-    # Points that fall inside the legend region (need clearing)
     conflict_xs = [x for x, y in zip(xs, ys) if x >= leg_x0_data and y >= leg_y0_data]
     if not conflict_xs:
         return
 
-    # We need max(conflict_xs) to map to at most leg_x0_frac in axes coords,
-    # with a 5 % padding so the point sits just outside the legend.
     max_cx = max(conflict_xs)
-    target_frac = leg_x0_frac * 0.95          # leave a small gap
-    # target_frac = (log10(max_cx) - log_xmin) / new_log_range
+    target_frac = leg_x0_frac * 0.95
     new_log_range = (np.log10(max_cx) - log_xmin) / target_frac
     ax.set_xlim(10 ** log_xmin, 10 ** (log_xmin + new_log_range))
 
 
-def plot_pareto(timing_data: list, metrics: dict,
-                particle: str, energy: int,
-                metric: str, batch_size: int,
-                out_path: Path) -> None:
+def plot_pareto(x_vals: dict, x_errs: dict, x_label: str,
+                metrics: dict, particle: str, energy: int,
+                metric: str, out_path: Path) -> None:
     """
-    Scatter plot of quality metric vs generation time for all models.
+    Scatter plot of shower quality vs an x-axis quantity for all models.
 
     Args:
-        timing_data: output of collect_timing()
-        metrics:     {display_name -> {dataset -> {metric -> value}}}
-        metric:      "AUC" (plotted as |AUC-0.5|) or "FPD"
-        batch_size:  1 or 10 (used only for the axis label)
+        x_vals: {model: x_value}
+        x_errs: {model: (xerr_lo, xerr_hi)} or None for no error bars
+        x_label: x-axis label string
+        metrics: {display_name -> {dataset -> {metric -> value}}}
+        metric:  "AUC" | "FPD" | "Sep_all"
+        out_path: output file path
     """
     dataset_key = f"{particle}_E{energy}"
 
@@ -123,15 +138,9 @@ def plot_pareto(timing_data: list, metrics: dict,
 
     plotted = []
     xs, ys = [], []
-    for pt in timing_data:
-        if pt["particle"].lower() != particle.lower():
+    for model in MODEL_COLORS:
+        if model not in x_vals:
             continue
-        if pt["energy"] != energy:
-            continue
-        model = pt["model"]
-        if model not in MODEL_COLORS:
-            continue
-
         model_metrics = metrics.get(model, {}).get(dataset_key, {})
 
         if metric == "AUC":
@@ -140,47 +149,63 @@ def plot_pareto(timing_data: list, metrics: dict,
                 continue
             y_val = abs(raw - 0.5)
             y_err = None
-        else:
+        elif metric == "FPD":
             y_val = model_metrics.get("FPD")
             y_err = model_metrics.get("FPD_err")
             if y_val is None:
                 continue
+        else:  # Sep_all
+            raw = model_metrics.get("Sep_all")
+            if raw is None:
+                continue
+            y_val = raw * 1e3
+            y_err = None
+
+        x_val = x_vals[model]
+        xe = None
+        if x_errs and model in x_errs:
+            lo, hi = x_errs[model]
+            if lo > 0 or hi > 0:
+                xe = [[lo], [hi]]
 
         color = MODEL_COLORS[model]
         ax.errorbar(
-            pt["time_mean"], y_val,
-            xerr=pt["time_std"],
-            yerr=y_err,
+            x_val, y_val,
+            xerr=xe,
+            yerr=[[y_err], [y_err]] if y_err is not None else None,
             color=color,
             marker="o", alpha=0.8,
             ms=1, elinewidth=1, capsize=3,
         )
         ax.scatter(
-            pt["time_mean"], y_val,
+            x_val, y_val,
             color=color, marker="o",
             alpha=0.9, s=100,
             edgecolors="black", linewidths=0.5,
         )
         plotted.append(model)
-        xs.append(pt["time_mean"])
+        xs.append(x_val)
         ys.append(y_val)
 
     if not plotted:
         plt.close()
-        print(f"No data for {particle} {energy} GeV {metric} batch={batch_size}, skipping.")
+        print(f"No data for {particle} {energy} GeV {metric} [{x_label}], skipping.")
         return
 
     hep.cms.label("Preliminary", ax=ax, data=False,
                   rlabel=f"{particle} {energy} GeV", loc=0)
 
     ax.set_xscale("log")
-    ax.set_xlabel(f"Time/Shower (s) [batch size = {batch_size}]", fontsize=24)
+    ax.set_xlabel(x_label, fontsize=24)
 
     if metric == "AUC":
         ax.set_ylabel(r"AUC $-$ 0.5", fontsize=24)
-    else:
+    elif metric == "FPD":
         ax.set_yscale("log")
         ax.set_ylabel(r"FPD ($\times 10^{-3}$)", fontsize=24)
+    else:  # Sep_all
+        ax.set_yscale("log")
+        ax.set_ylabel(r"Avg. Sep. Power ($\times 10^{-3}$)", fontsize=24)
 
     legend_handles = [
         mpatches.Patch(color=color, label=label, ec="black")
@@ -189,11 +214,9 @@ def plot_pareto(timing_data: list, metrics: dict,
     ]
     ax.legend(handles=legend_handles, fontsize=16, loc="upper right")
 
-    # Extend x-axis so no points sit behind the legend
     plt.tight_layout()
     _extend_axes_for_legend(ax, fig, xs, ys)
 
-    # Arrow indicating direction of improvement (bottom-left = fast AND good quality)
     ax.annotate(
         "Better",
         xy=(0.08, 0.07), xycoords="axes fraction",
@@ -220,27 +243,63 @@ if __name__ == "__main__":
     matplotlib.use("Agg")
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--timing_input",  default="timing_inputs/combined_timing_profiles.json")
-    parser.add_argument("--metrics_input", default="metrics_summary.json")
-    parser.add_argument("--output_dir",    default="profiling_plots")
+    parser.add_argument("--timing_input",   default="timing_inputs/combined_timing_profiles.json")
+    parser.add_argument("--stats_input",    default="timing_inputs/model_parameters_flops.json")
+    parser.add_argument("--metrics_input",  default="metrics_summary.json")
+    parser.add_argument("--output_dir",     default="profiling_plots")
     parser.add_argument("--remove_first_batch", action="store_true",
                         help="Exclude first (warmup) batch from timing averages")
     args = parser.parse_args()
 
     timing_raw = json.loads(Path(args.timing_input).read_text())
+    stat_raw   = json.loads(Path(args.stats_input).read_text())
     metrics    = json.loads(Path(args.metrics_input).read_text())
     output_dir = Path(args.output_dir)
 
     particles = ["Photon", "Pion"]
     energies  = [5, 50, 500]
+    quality_metrics = ["AUC", "FPD", "Sep_all"]
 
+    # ── Timing x-axis (batch 1 and batch 100) ──────────────────────────────
     for batch_size in [1, 100]:
-        timing_data = collect_timing(timing_raw, batch_size,
-                                     remove_first_batch=args.remove_first_batch)
+        timing_map = collect_timing(timing_raw, batch_size,
+                                    remove_first_batch=args.remove_first_batch)
         for particle in particles:
             for energy in energies:
-                for metric in ["AUC", "FPD"]:
-                    fname = (f"pareto_{metric.lower()}_{particle.lower()}"
-                             f"_{energy}GeV_batch{batch_size}.pdf")
-                    plot_pareto(timing_data, metrics, particle, energy,
-                                metric, batch_size, output_dir / fname)
+                x_vals = {model: t for (model, p, e), (t, _) in timing_map.items()
+                          if p == particle and e == energy}
+                x_errs = {model: (0, s) for (model, p, e), (_, s) in timing_map.items()
+                          if p == particle and e == energy}
+                x_label = f"Time/Shower (s) [batch size = {batch_size}]"
+
+                for metric in quality_metrics:
+                    tag = f"{metric.lower()}_{particle.lower()}_{energy}GeV_batch{batch_size}"
+                    plot_pareto(x_vals, x_errs, x_label, metrics,
+                                particle, energy, metric,
+                                output_dir / f"pareto_{tag}.pdf")
+
+    # ── Parameters x-axis ──────────────────────────────────────────────────
+    for particle in particles:
+        for energy in energies:
+            stats = collect_model_stats(stat_raw, particle, energy)
+            x_vals = {m: v[0] for m, v in stats.items()}
+            x_errs = None  # parameters have no range
+
+            for metric in quality_metrics:
+                tag = f"{metric.lower()}_{particle.lower()}_{energy}GeV_params"
+                plot_pareto(x_vals, x_errs, "Model Parameters", metrics,
+                            particle, energy, metric,
+                            output_dir / f"pareto_{tag}.pdf")
+
+    # ── FLOPs x-axis ───────────────────────────────────────────────────────
+    for particle in particles:
+        for energy in energies:
+            stats = collect_model_stats(stat_raw, particle, energy)
+            x_vals = {m: v[1] for m, v in stats.items()}
+            x_errs = {m: (v[2], v[3]) for m, v in stats.items()}
+
+            for metric in quality_metrics:
+                tag = f"{metric.lower()}_{particle.lower()}_{energy}GeV_flops"
+                plot_pareto(x_vals, x_errs, "Model FLOPs", metrics,
+                            particle, energy, metric,
+                            output_dir / f"pareto_{tag}.pdf")
