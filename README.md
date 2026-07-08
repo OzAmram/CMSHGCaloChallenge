@@ -115,18 +115,34 @@ python plot_3d_event_displays.py \
 
 ## Computational profile plots
 
-Timing, FLOPs, and parameter comparison plots:
+Timing bar charts, FLOPs/parameter scatter, and first-batch-vs-rest comparison:
 
 ```bash
-python plot_profile.py                     # latency mode
-python plot_profile.py --throughput        # throughput mode
+python3 plot_profile.py                      # latency mode
+python3 plot_profile.py --throughput         # throughput mode
+python3 plot_profile.py --remove_first_batch # exclude warmup batch
 ```
 
 Input data lives in `timing_inputs/`; outputs go to `profiling_plots/`.
 
 ---
 
+## Pareto plots (quality vs generation time)
+
+Scatter plots of shower quality vs per-shower generation time for comparing the
+speed–fidelity tradeoff across models. Quality metrics are AUC − 0.5 (lower =
+closer to Geant4) and FPD. Produced for batch size 1 and batch size 100 at each
+energy and particle type:
+
+```bash
+python3 plot_pareto.py
+```
+
+Outputs: `profiling_plots/pareto_{auc|fpd}_{photon|pion}_{N}GeV_batch{1|100}.pdf`
+
+---
+
 ## Reproducing all plots
 
 See [`plot_commands.md`](./plot_commands.md) for the exact commands used to regenerate
-all summary, scaling, 3D event display, and profiling plots.
+all summary, scaling, 3D event display, profiling, and Pareto plots.

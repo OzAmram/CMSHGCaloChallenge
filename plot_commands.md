@@ -87,3 +87,33 @@ python3 plot_3d_event_displays.py \
     --models HGCaloDiffusion \
     --output_dir plots/event_displays/
 ```
+
+---
+
+## Computational profile plots
+
+Timing bar charts, FLOPs/parameter scatter, and first-batch vs rest comparison.
+Output goes to `profiling_plots/`.
+
+```bash
+python3 plot_profile.py                      # latency mode (default)
+python3 plot_profile.py --throughput         # throughput mode
+python3 plot_profile.py --remove_first_batch # exclude warmup batch
+```
+
+---
+
+## Pareto plots (quality vs generation time)
+
+Scatter plots of shower quality (AUC − 0.5 or FPD) vs per-shower generation time,
+for batch size 1 and batch size 100. Output goes to `profiling_plots/`.
+
+```bash
+python3 plot_pareto.py
+```
+
+Optional flags:
+- `--remove_first_batch` — exclude warmup batch from timing averages
+- `--output_dir DIR`     — override output directory (default: `profiling_plots/`)
+
+Output files: `pareto_{auc|fpd}_{photon|pion}_{N}GeV_batch{1|100}.pdf`
