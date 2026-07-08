@@ -1,81 +1,132 @@
 # CMSHGCaloChallenge
 
+Evaluation framework for generative models of the CMS High Granularity Calorimeter (HGCal).
 
-The challenge uses a 70/30 train/test split.
+---
 
-To ensure consistency, we specify the train and test file lists in [`datasets/`](./datasets).
-Users are welcome to split the training set into a train/validation split as they wish.
-The files from the testing set must not be used for training, validation, or any sort of optimization.
+## Dataset splits
 
-Photon datasets:
-* Train/val (`photon_files_train.txt`) : 0-244
-* Test (`photon_files_test.txt`) : 245-350
+The challenge uses a 70/30 train/test split. Train and test file lists are in [`datasets/`](./datasets).
+The test set must not be used for training, validation, or any optimization.
 
-Pion datasets:
-* Train/val (`pion_files_train.txt`) : 0-249
-* Test (`pion_files_test.txt`) : 250-360
+| Particle | Train/val (`*_train.txt`) | Test (`*_test.txt`) |
+|----------|--------------------------|---------------------|
+| Photon   | files 0–244              | files 245–350       |
+| Pion     | files 0–249              | files 250–360       |
 
-Evaluation metrics are computed with the `hgcal_metrics.py` script; to run it:
-```
-python hgcal_metrics.py -c CONFIG.json -g GENERATED_FILES.txt -p PLOT_DIR/ -d DATA_DIR/ --mode MODE --EMin EMIN --name MODEL_NAME [--plot]
-```
-where:
-* `CONFIG.json` is a configuration file with details of the dataset (either `config_HGCal_pions.json` or `config_HGCAL_photons.json`)
-* `GENERATED_FILES.txt` is a text file with the paths to showers to be evaluated (from your model).
-* `PLOT_DIR/` is a directory to put the evaluation plots as well as a text file with the numeric metrics.
-* `DATA_DIR/` is a directory where the Geant showers are stored.
-* `MODE` is the evaluation to be performed. One of `hist`, `cls`, `fpd`, or `all`. Default is `all`
-* `--plot` determines whether histogram plots of each feature will be saved
-* `EMin` is the minimum voxel energy. Default is 0.00001 (10 keV)
-* `MODEL_NAME` is a string which will be used to label your model on the
-  histogram plots
+Generated sample file lists (per model per dataset) are in [`datasets/generated/`](./datasets/generated/).
 
-An example usage would be:
-```
-python hgcal_metrics.py -c config_HGCal_pions.json -g datasets/HGCal_central_2024_pions_eval_test.txt -p plots/eval_test/ -d  /uscms_data/d3/oamram/HGCal/HGCal_central_2024_pions/ --mode all --plot --name MyModel
+---
+
+## Running evaluations
+
+Evaluation metrics are computed with `hgcal_metrics.py`:
+
+```bash
+python hgcal_metrics.py \
+    -c configs/config_HGCal_pions.json \
+    -g datasets/generated/MyModel_Pion_E50.txt \
+    -p eval_results_all/MyModel/Pion_E50/ \
+    -d /path/to/geant/pion/h5s/ \
+    --mode all --plot --name MyModel
 ```
 
-Note that computing all of the features for evaluation takes quite some time
-for the pion datasets. To avoid this significant overhead, the script saves
-these computed features once for each input file with the same name extended
-with .feat.npz. Subsequent runs will then use these pre-computed features if such
-a file exists. To force a recreation of these files you can use the
-`--reprocess` flag
+Key arguments:
+- `-c` — config JSON in `configs/` (`config_HGCal_photons.json`, `config_HGCal_photons_E5.json`, etc.)
+- `-g` — text file listing paths to generated shower HDF5 files
+- `-p` — output directory (metrics.txt, hist/*.npz, hist/*.png written here)
+- `-d` — directory containing Geant4 reference showers
+- `--mode` — `hist`, `cls`, `fpd`, or `all` (default: `all`)
+- `--plot` — save per-feature histogram plots
+- `--EMin` — minimum voxel energy threshold (default: 1e-5)
 
-## Summary Plots
+Feature npz files are cached alongside each input HDF5 (`.feat.npz` suffix); use `--reprocess` to force recomputation.
 
-To print a text + LaTeX summary table of all models/datasets:
-```
+---
+
+## Summary table
+
+Print a text + LaTeX table of all model metrics across all datasets:
+
+```bash
 python print_summary.py
 ```
 
-To overlay histogram summaries from multiple model runs after those per-feature `.npz`
-files have been produced, use:
+Write all metrics to a single JSON file for downstream use:
+
+```bash
+python print_summary.py --json metrics_summary.json
 ```
-python plot_summary.py --config summary_plot_config.example.json
+
+A pre-generated `metrics_summary.json` is included in the repo.
+
+---
+
+## Histogram overlay plots
+
+Overlay per-feature histograms from multiple models using pre-computed `hist/*.npz` files:
+
+```bash
+python plot_summary.py --config configs/summary_plot_config_Photon_E50.json
 ```
-The summary config ties together each model name, the path containing its histogram
-`.npz` files, and an optional plotting color. It also accepts a `style` block for
-presentation tuning. The default `paper` preset is line-first and intentionally
-less cluttered; `diagnostic` keeps the model uncertainty bands visible.
-The example file can be copied and edited for a real comparison setup.
 
+Config files for all 8 datasets are in `configs/summary_plot_config_*.json`.
+The hist npz files needed to run these plots are committed under `eval_results_all/*/hist/*.npz`.
 
+---
 
-## Scaling study
+## KS scaling study
 
+Diagnose each model's fidelity in terms of an equivalent number of Geant4 samples:
 
-To reproduce the plots which diagnose the performance of each model is terms of an equivalent
-number of Geant4 samples (in a bias-variance tradeoff formulation), 
-use `run_scaling_study.py`:
+```bash
+# Replot from committed scaling data (no EOS access needed)
+python run_scaling_study.py --plot_only --logy
 
+# Run the full scaling study + plot (requires EOS access)
+python run_scaling_study.py --datasets Photon_E5 Pion_E5
 ```
-python run_scaling_study.py --datasets Photon_E5 Pion_E5    # run + plot
-python run_scaling_study.py --plot_only                     # replot all datasets only
+
+Pre-computed scaling curves for all 6 single-energy datasets are in
+`eval_scaling/ks_scaling_all.json`. Plots go to `eval_scaling/plots/`.
+
+---
+
+## 3D event displays
+
+Render 3D shower visualizations for one or more models:
+
+```bash
+# 500 GeV photons, all models
+python plot_3d_event_displays.py \
+    --particle Photon --target_energy 500 --energy_label 500 \
+    --n_events 1 --n_avg 1000 \
+    --output_dir plots/event_displays/
+
+# Single model only
+python plot_3d_event_displays.py \
+    --particle Photon --target_energy 500 --energy_label 500 \
+    --models HGCaloDiffusion \
+    --n_events 1 --n_avg 1000 \
+    --output_dir plots/event_displays/calodiffusion_only/
 ```
-This runs `run_ks_scaling.py` (repeated Geant4-vs-Geant4 `hgcal_metrics.py`
-comparisons at increasing sample size, cached under `eval_scaling/`) followed
-by `plotting/plot_ks_scaling.py`, which produces one plot per feature category
-into `eval_scaling/plots/`. Pass `--plot_only` to skip the (slow) scaling runs
-and just regenerate plots from existing `eval_scaling/` data, e.g. after
-updating a model's metrics in `eval_results_all/`.
+
+---
+
+## Computational profile plots
+
+Timing, FLOPs, and parameter comparison plots:
+
+```bash
+python plot_profile.py                     # latency mode
+python plot_profile.py --throughput        # throughput mode
+```
+
+Input data lives in `timing_inputs/`; outputs go to `profiling_plots/`.
+
+---
+
+## Reproducing all plots
+
+See [`plot_commands.md`](./plot_commands.md) for the exact commands used to regenerate
+all summary, scaling, 3D event display, and profiling plots.

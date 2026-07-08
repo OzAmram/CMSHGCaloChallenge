@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.un~
+
+# Generated plots (regenerate with plot scripts)
+plots/
+profiling_plots/
+
+# Evaluation result artifacts: large binaries and per-variable PNGs/PDFs
+eval_results_all/**/*.hdf5
+eval_results_all/**/*.png
+eval_results_all/**/*.pdf
+# Ignore raw feature .npz files but keep hist/*.npz (needed by plot_summary.py)
+eval_results_all/**/*.npz
+!eval_results_all/**/hist/*.npz
+
+# KS scaling raw per-n subdirectories (large, regenerable from EOS)
+eval_scaling/Photon_*/
+eval_scaling/Pion_*/
+
+# Development scratch directories
+baseline_test/
+chunk_test/
+geant_test/
+geant_test_pion/
+test/
+
+# Stale intermediate results
+results_*.txt
+test_*.txt

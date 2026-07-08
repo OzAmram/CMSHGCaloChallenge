@@ -1,0 +1,141 @@
+[
+  {
+    "model": "HGCaloDiffusion",
+    "particle": "Photon",
+    "parameters": 4924045,
+    "flops": [114222231220, 114222231220],
+    "iterations": 200
+  },
+  {
+    "model": "HGCaloDiffusion",
+    "particle": "Pion",
+    "parameters": 4924045,
+    "flops": [257659694260, 257659694260],
+    "iterations": 200
+  },
+  {
+    "model": "AllShowers",
+    "particle": "Photon",
+    "energy": 5,
+    "parameters": 587378,
+    "flops": [131377024, 131377024],
+    "iterations": 32
+  },
+  {
+    "model": "AllShowers",
+    "particle": "Photon",
+    "energy": 50,
+    "parameters": 587378,
+    "flops": [324511616, 437856128],
+    "iterations": 32
+  },
+  {
+    "model": "AllShowers",
+    "particle": "Photon",
+    "energy": 500,
+    "parameters": 587378,
+    "flops": [1101145984, 1701422976],
+    "iterations": 32
+  },
+  {
+    "model": "AllShowers",
+    "particle": "Pion",
+    "energy": 5,
+    "parameters": 587378,
+    "flops": [131377024, 131377024],
+    "iterations": 32
+  },
+  {
+    "model": "AllShowers",
+    "particle": "Pion",
+    "energy": 50,
+    "parameters": 587378,
+    "flops": [227944320, 794666880],
+    "iterations": 32
+  },
+  {
+    "model": "AllShowers",
+    "particle": "Pion",
+    "energy": 500,
+    "parameters": 587378,
+    "flops": [551200640, 3514935168],
+    "iterations": 32
+  },
+  {
+    "model": "HGCaloDream",
+    "particle": "Photon",
+    "parameters": 34337392,
+    "flops": [213400000000, 213400000000],
+    "iterations": 20
+  },
+  {
+    "model": "HGCaloDream",
+    "particle": "Pion",
+    "parameters": 34337392,
+    "flops": [153650000000, 153650000000],
+    "iterations": 20
+  },
+  {
+    "model": "GraphCNF",
+    "particle": "Photon",
+    "parameters": 1313808,
+    "flops": [66962079232, 66962079232],
+    "iterations": 1
+  },
+  {
+    "model": "GraphCNF",
+    "particle": "Pion",
+    "parameters": 1313808,
+    "flops": [66962079232, 66962079232],
+    "iterations": 1
+  },
+  {
+    "model": "CaloDiT-2",
+    "particle": "Photon",
+    "parameters": 74474590,
+    "flops": [50959828992, 50959828992],
+    "iterations": 32
+  },
+  {
+    "model": "HGCaloTrilogy(10 step)",
+    "particle": "Photon",
+    "parameters": 470907,
+    "flops": [5131440128, 5131440128],
+    "iterations": 10
+  },
+  {
+    "model": "HGCaloTrilogy(10 step)",
+    "particle": "Pion",
+    "parameters": 470907,
+    "flops": [5131440128, 5131440128],
+    "iterations": 10
+  },
+  {
+    "model": "HGCaloTrilogy",
+    "particle": "Photon",
+    "parameters": 470907,
+    "flops": [5131440128, 5131440128],
+    "iterations": 1
+  },
+  {
+    "model": "HGCaloTrilogy",
+    "particle": "Pion",
+    "parameters": 470907,
+    "flops": [5131440128, 5131440128],
+    "iterations": 1
+  },
+  {
+    "model": "HGCaloTrilogy(0 step)",
+    "particle": "Photon",
+    "parameters": 32292470,
+    "flops": [64151192, 64151192],
+    "iterations": 0
+  },
+  {
+    "model": "HGCaloTrilogy(0 step)",
+    "particle": "Pion",
+    "parameters": 32292470,
+    "flops": [64151192, 64151192],
+    "iterations": 0
+  }
+]

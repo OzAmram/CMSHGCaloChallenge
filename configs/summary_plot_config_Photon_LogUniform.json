@@ -1,0 +1,32 @@
+{
+  "output_dir": "../plots/summary/Photon_LogUniform",
+  "data_label": "Photon, LogUniform",
+  "layer_filter": 10,
+  "geom_file": "../HGCalShowers/geoms/HGCal_geo_2024.pkl",
+  "models": [
+    {
+      "name": "HGCaloDiffusion",
+      "path": "../eval_results_all/CaloDiffusion/Photon_LogUniform/hist"
+    },
+    {
+      "name": "HGCaloDream",
+      "path": "../eval_results_all/CaloDream/Photon_LogUniform/hist"
+    },
+    {
+      "name": "HGCaloTrilogy",
+      "path": "../eval_results_all/GLAM/Photon_LogUniform/hist"
+    },
+    {
+      "name": "GraphCNF",
+      "path": "../eval_results_all/GraphCNF_v2/Photon_LogUniform/hist"
+    },
+    {
+      "name": "AllShowers",
+      "path": "../eval_results_all/Thorsten/Photon_LogUniform/hist"
+    },
+    {
+      "name": "CaloDiT-2",
+      "path": "../eval_results_all/CaloDiT/Photon_LogUniform/hist"
+    }
+  ]
+}
